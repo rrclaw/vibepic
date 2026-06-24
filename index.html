@@ -6,7 +6,7 @@
   <title>vibepic · 氛围照片编辑器</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Serif+Display&family=Caveat:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Serif+Display&family=Caveat:wght@500;700&family=Pinyon+Script&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body>
   <header class="topbar">
@@ -44,6 +44,7 @@
         <button class="tab active" data-tab="keywords">关键词</button>
         <button class="tab" data-tab="ascii">ASCII</button>
         <button class="tab" data-tab="effects">动效</button>
+        <button class="tab" data-tab="doodle">装饰</button>
         <button class="tab" data-tab="export">导出</button>
       </nav>
 
@@ -169,6 +170,11 @@
           <button class="fx-card" data-fx="waves"><span>≈</span>浪花滚动</button>
           <button class="fx-card" data-fx="sparkle"><span>✦</span>星星点点</button>
           <button class="fx-card" data-fx="petals"><span>🌸</span>花瓣飘落</button>
+          <button class="fx-card" data-fx="fireworks"><span>🎆</span>烟花</button>
+          <button class="fx-card" data-fx="twinkle"><span>★</span>闪烁星星</button>
+          <button class="fx-card" data-fx="snow"><span>❄</span>雪花</button>
+          <button class="fx-card" data-fx="clover"><span>🍀</span>四叶草</button>
+          <button class="fx-card" data-fx="hearts"><span>♥</span>心</button>
         </div>
         <div class="field region-edit" id="fx-region-edit" hidden>
           <label>动效范围（只让选中的动效在这块区域里播）</label>
@@ -194,6 +200,75 @@
           </div>
         </div>
         <button id="btn-fx-clear" class="btn btn-ghost full">关闭所有动效</button>
+      </div>
+
+      <!-- DOODLE 装饰 -->
+      <div class="tab-pane" data-pane="doodle">
+        <p class="hint">手绘描边装饰，会自己描出来 + 持续微动，导出 WebM 也录得到。先选颜色，再点元素。</p>
+        <div class="field row2">
+          <div>
+            <label>颜色</label>
+            <div class="seg sm" id="dd-preset">
+              <button class="seg-btn active" data-ddcol="#ffffff">白</button>
+              <button class="seg-btn" data-ddcol="#e0a64b">金</button>
+            </div>
+          </div>
+          <div>
+            <label>自定义</label>
+            <input id="dd-color" type="color" value="#ffffff" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>手绘线条（点后在画面拖一个框，线条在框里自动描出）</label>
+          <div class="fx-grid">
+            <button class="fx-card" data-ddpath="staff"><span>𝄞</span>五线谱</button>
+            <button class="fx-card" data-ddpath="cord"><span>♪</span>耳机线</button>
+            <button class="fx-card" data-ddpath="swirl"><span>∿</span>涡卷 swirl</button>
+            <button class="fx-card" data-ddpath="vine"><span>❀</span>花藤</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>音符 / 花朵贴纸（点即加，画面上可拖动）</label>
+          <div class="glyph-grid" id="dd-glyphs">
+            <button data-ddglyph="note1">♪</button>
+            <button data-ddglyph="note2">♫</button>
+            <button data-ddglyph="note3">♬</button>
+            <button data-ddglyph="clef">𝄞</button>
+            <button data-ddglyph="flower1">❀</button>
+            <button data-ddglyph="flower2">✿</button>
+            <button data-ddglyph="flower3">❁</button>
+            <button data-ddglyph="spark">✦</button>
+            <button data-ddglyph="heart">♡</button>
+            <button data-ddglyph="star">✺</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>英文花字</label>
+          <div class="row">
+            <input id="dd-text" type="text" placeholder="如 Jazz tropical" />
+            <button id="dd-text-add" class="btn btn-ghost">+ 加</button>
+          </div>
+        </div>
+
+        <div class="field row2">
+          <div>
+            <label>选中大小 <span id="dd-scale-val">100</span>%</label>
+            <input id="dd-scale" type="range" min="40" max="320" value="100" />
+          </div>
+          <div>
+            <label>速度 <span id="dd-speed-val">100</span>%</label>
+            <input id="dd-speed" type="range" min="20" max="200" value="100" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="dd-replay" class="btn btn-ghost" style="flex:1">↺ 重描线条</button>
+          <button id="dd-del" class="btn btn-ghost">删除选中</button>
+          <button id="dd-clear" class="btn btn-ghost">清空</button>
+        </div>
+        <div class="status" id="dd-status">提示：点画面上的装饰可选中，再拖动 / 改大小 / 删除。</div>
       </div>
 
       <!-- EXPORT -->

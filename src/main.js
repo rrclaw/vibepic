@@ -2,6 +2,7 @@ import './style.css'
 import { Keywords } from './modules/keywords.js'
 import { renderAscii, clearAscii } from './modules/ascii.js'
 import { Effects } from './modules/effects.js'
+import { Doodles } from './modules/doodles.js'
 import { exportPNG, exportWebM, download } from './modules/exporter.js'
 
 // ---------- refs ----------
@@ -32,6 +33,7 @@ const state = {
 
 const keywords = new Keywords(labelsLayer)
 const effects = new Effects()
+const doodles = new Doodles()
 let previewPaused = false
 
 // ---------- toast ----------
@@ -139,10 +141,11 @@ function loop(now) {
   last = now
   const ctx = fxCanvas.getContext('2d')
   ctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height)
-  if (!previewPaused && !effects.isEmpty) {
-    effects.update(dt)
-    effects.draw(ctx, fxCanvas.width, fxCanvas.height)
-  }
+  const W = fxCanvas.width, H = fxCanvas.height
+  if (!previewPaused) { effects.update(dt); doodles.update(dt) }
+  effects.draw(ctx, W, H)
+  doodles.draw(ctx, W, H)
+  if (inDoodleTab()) doodles.drawSelection(ctx, W, H)
   requestAnimationFrame(loop)
 }
 requestAnimationFrame(loop)
@@ -209,8 +212,16 @@ document.querySelectorAll('.tab').forEach((t) => {
     // 离开 ASCII tab 时收起遮罩框
     if (t.dataset.tab !== 'ascii') regionBox.hidden = true
     else if (state.asciiOpts.scope === 'region' && state.asciiRegionNorm) showBoxFromNorm(state.asciiRegionNorm)
+    syncLabelsPE()
+    stage.style.cursor = t.dataset.tab === 'doodle' ? 'crosshair' : 'default'
   })
 })
+
+// 装饰 tab 时关闭关键词标签的指针事件，让画布接收装饰拖拽；其它 tab 恢复
+function syncLabelsPE() {
+  if (regionDraw.active) { labelsLayer.style.pointerEvents = 'none'; return }
+  labelsLayer.style.pointerEvents = $('.tab.active')?.dataset.tab === 'doodle' ? 'none' : 'auto'
+}
 
 // segmented helper
 function seg(containerSel, attr, cb) {
@@ -300,8 +311,8 @@ stage.addEventListener('pointerup', (e) => {
   const w = Math.abs(cx - regionDraw.start.x), h = Math.abs(cy - regionDraw.start.y)
   const cb = regionDraw.cb
   regionDraw = { active: false, cb: null, start: null }
-  stage.style.cursor = 'default'
-  labelsLayer.style.pointerEvents = 'auto'
+  stage.style.cursor = inDoodleTab() ? 'crosshair' : 'default'
+  syncLabelsPE()
   if (w < 8 || h < 8) { regionBox.hidden = true; cb?.(null); return }
   cb?.({ x: x / rect.width, y: y / rect.height, w: w / rect.width, h: h / rect.height })
 })
@@ -369,7 +380,7 @@ function refreshFxRegionUI() {
   const wrap = $('#fx-region-edit')
   wrap.hidden = list.length === 0
   const sel = $('#fx-region-target')
-  const labels = { rain: '🌧 雨滴', notes: '♪ 音符', bloom: '❀ 花开', waves: '≈ 浪花', sparkle: '✦ 星星', petals: '🌸 花瓣' }
+  const labels = { rain: '🌧 雨滴', notes: '♪ 音符', bloom: '❀ 花开', waves: '≈ 浪花', sparkle: '✦ 星星', petals: '🌸 花瓣', fireworks: '🎆 烟花', twinkle: '★ 闪烁星', snow: '❄ 雪花', clover: '🍀 四叶草', hearts: '♥ 心' }
   const prev = sel.value
   sel.innerHTML = ''
   for (const t of list) {
@@ -380,7 +391,7 @@ function refreshFxRegionUI() {
   }
   if (list.includes(prev)) sel.value = prev
 }
-document.querySelectorAll('.fx-card').forEach((card) => {
+document.querySelectorAll('#fx-grid .fx-card').forEach((card) => {
   card.addEventListener('click', () => {
     const type = card.dataset.fx
     effects.toggle(type)
@@ -421,6 +432,109 @@ $('#btn-fx-clear').addEventListener('click', () => {
   refreshFxRegionUI()
 })
 
+// ================= DOODLE 装饰 =================
+function setDoodleColor(c) {
+  doodles.color = c
+  $('#dd-color').value = c
+  if (doodles.selected) doodles.selected.color = c
+}
+seg('#dd-preset', 'ddcol', (v) => setDoodleColor(v))
+$('#dd-color').addEventListener('input', (e) => {
+  document.querySelectorAll('#dd-preset .seg-btn').forEach((b) => b.classList.remove('active'))
+  setDoodleColor(e.target.value)
+})
+// 手绘线条：点击 → 框选范围 → 在框里描出
+document.querySelectorAll('[data-ddpath]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (!state.img) return toast('先上传一张照片')
+    const kind = btn.dataset.ddpath
+    beginRegionDraw((norm) => {
+      const region = norm || { x: 0.12, y: 0.12, w: 0.76, h: 0.5 }
+      const it = doodles.addPath(kind, region)
+      syncDoodleScale()
+      setTimeout(() => (regionBox.hidden = true), 500)
+      toast('线条描出来了 ✦ 可点选拖动')
+    })
+  })
+})
+// 音符/花朵贴纸：点即加（画面中心），可拖
+document.querySelectorAll('[data-ddglyph]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (!state.img) return toast('先上传一张照片')
+    doodles.addGlyph(btn.dataset.ddglyph, 0.5, 0.4)
+    syncDoodleScale()
+    toast('贴纸已添加 ✦ 拖到想要的位置')
+  })
+})
+// 英文花字
+function addDoodleText() {
+  const v = $('#dd-text').value.trim()
+  if (!v) return
+  if (!state.img) return toast('先上传一张照片')
+  doodles.addText(v, 0.5, 0.35)
+  $('#dd-text').value = ''
+  syncDoodleScale()
+}
+$('#dd-text-add').addEventListener('click', addDoodleText)
+$('#dd-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') addDoodleText() })
+// 选中大小
+$('#dd-scale').addEventListener('input', (e) => {
+  $('#dd-scale-val').textContent = e.target.value
+  const it = doodles.selected
+  if (it && it.type !== 'path') it.scale = +e.target.value / 100
+})
+function syncDoodleScale() {
+  const it = doodles.selected
+  if (it && it.scale != null) {
+    $('#dd-scale').value = Math.round(it.scale * 100)
+    $('#dd-scale-val').textContent = Math.round(it.scale * 100)
+  }
+  const s = doodles.selected
+  $('#dd-status').textContent = s ? `已选中：${s.type === 'path' ? s.kind + ' 线条' : (s.type === 'text' ? '花字「' + s.str + '」' : '贴纸 ' + s.ch)}` : '提示：点画面上的装饰可选中，再拖动 / 改大小 / 删除。'
+}
+$('#dd-speed').addEventListener('input', (e) => {
+  $('#dd-speed-val').textContent = e.target.value
+  doodles.speed = +e.target.value / 100
+})
+$('#dd-replay').addEventListener('click', () => { doodles.replayAll(); toast('重描 ✦') })
+$('#dd-del').addEventListener('click', () => {
+  if (doodles.selected) { doodles.remove(doodles.selected); syncDoodleScale() }
+  else toast('先点选一个装饰')
+})
+$('#dd-clear').addEventListener('click', () => { doodles.clear(); syncDoodleScale() })
+
+// ----- 画布上拖动装饰（仅装饰 tab） -----
+function ptNorm(e) {
+  const r = stage.getBoundingClientRect()
+  return {
+    xN: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+    yN: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
+  }
+}
+function inDoodleTab() { return $('.tab.active')?.dataset.tab === 'doodle' }
+let ddDrag = null
+stage.addEventListener('pointerdown', (e) => {
+  if (regionDraw.active || !inDoodleTab() || !state.img) return
+  const { xN, yN } = ptNorm(e)
+  const hit = doodles.hit(xN, yN)
+  doodles.selected = hit
+  syncDoodleScale()
+  if (hit) {
+    ddDrag = { xN, yN }
+    stage.setPointerCapture(e.pointerId)
+    stage.style.cursor = 'grabbing'
+  }
+})
+stage.addEventListener('pointermove', (e) => {
+  if (!ddDrag) return
+  const { xN, yN } = ptNorm(e)
+  doodles.moveTo(doodles.selected, xN, yN, xN - ddDrag.xN, yN - ddDrag.yN)
+  ddDrag = { xN, yN }
+})
+stage.addEventListener('pointerup', () => {
+  if (ddDrag) { ddDrag = null; stage.style.cursor = inDoodleTab() ? 'crosshair' : 'default' }
+})
+
 // ================= EXPORT =================
 seg('#export-scale', 'scale', (v) => (state.exportScale = +v))
 $('#rec-dur').addEventListener('input', (e) => {
@@ -431,21 +545,21 @@ $('#btn-export-png').addEventListener('click', async () => {
   if (!state.img) return toast('先上传一张照片')
   const blob = await exportPNG({
     base: baseCanvas, ascii: asciiCanvas, hasAscii: state.hasAscii,
-    effects, labels: keywords.getExportLabels(), fontScale: fontScale(), scale: state.exportScale,
+    effects, doodles, labels: keywords.getExportLabels(), fontScale: fontScale(), scale: state.exportScale,
   })
   download(blob, `vibepic-${Date.now()}.png`)
   toast('PNG 已导出 ✦')
 })
 $('#btn-export-webm').addEventListener('click', async () => {
   if (!state.img) return toast('先上传一张照片')
-  if (effects.isEmpty) return toast('先在「动效」里加一个动效再录制')
+  if (effects.isEmpty && doodles.isEmpty) return toast('先加一个动效或装饰再录制')
   const status = $('#export-status')
   previewPaused = true
   status.textContent = '录制中… 0%'
   try {
     const blob = await exportWebM({
       base: baseCanvas, ascii: asciiCanvas, hasAscii: state.hasAscii,
-      effects, labels: keywords.getExportLabels(), fontScale: fontScale(),
+      effects, doodles, labels: keywords.getExportLabels(), fontScale: fontScale(),
       scale: state.exportScale, duration: state.recDur,
       onTick: (p) => (status.textContent = `录制中… ${Math.round(p * 100)}%`),
     })

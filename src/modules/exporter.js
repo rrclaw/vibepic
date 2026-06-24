@@ -32,7 +32,7 @@ function drawBackground(ctx, base, ascii, hasAscii, tW, tH) {
 }
 
 // ctx2d 配置
-export function exportPNG({ base, ascii, hasAscii, effects, labels, fontScale, scale }) {
+export function exportPNG({ base, ascii, hasAscii, effects, doodles, labels, fontScale, scale }) {
   const tW = Math.round(base.width * scale)
   const tH = Math.round(base.height * scale)
   const c = document.createElement('canvas')
@@ -40,12 +40,13 @@ export function exportPNG({ base, ascii, hasAscii, effects, labels, fontScale, s
   const ctx = c.getContext('2d')
   drawBackground(ctx, base, ascii, hasAscii, tW, tH)
   if (effects && !effects.isEmpty) effects.draw(ctx, tW, tH)
+  if (doodles && !doodles.isEmpty) doodles.draw(ctx, tW, tH)
   drawLabels(ctx, labels, tW, tH, fontScale * scale)
   return new Promise((res) => c.toBlob((b) => res(b), 'image/png'))
 }
 
 // 录制 WebM
-export function exportWebM({ base, ascii, hasAscii, effects, labels, fontScale, scale, duration, onTick }) {
+export function exportWebM({ base, ascii, hasAscii, effects, doodles, labels, fontScale, scale, duration, onTick }) {
   return new Promise((resolve, reject) => {
     const tW = Math.round(base.width * scale)
     const tH = Math.round(base.height * scale)
@@ -73,6 +74,7 @@ export function exportWebM({ base, ascii, hasAscii, effects, labels, fontScale, 
       last = now
       drawBackground(ctx, base, ascii, hasAscii, tW, tH)
       if (effects) { effects.update(dt); effects.draw(ctx, tW, tH) }
+      if (doodles) { doodles.update(dt); doodles.draw(ctx, tW, tH) }
       drawLabels(ctx, labels, tW, tH, lblScale)
       const elapsed = (now - start) / 1000
       onTick?.(Math.min(1, elapsed / duration))

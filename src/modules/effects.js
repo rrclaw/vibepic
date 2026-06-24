@@ -241,13 +241,190 @@ const TYPES = {
       ctx.globalAlpha = 1
     },
   },
+
+  // 烟花：从底部升起 → 爆开成彩色火花 → 重力下坠淡出
+  fireworks: {
+    make(n) {
+      const rockets = Math.max(2, Math.round(n * 0.05))
+      const st = { rockets: [], sparks: [], spawn: 0, cap: rockets }
+      return st
+    },
+    update(st, dt, sp) {
+      st.spawn -= dt * sp
+      if (st.spawn <= 0 && st.rockets.length < st.cap) {
+        st.spawn = rand(0.4, 1.1)
+        st.rockets.push({ x: rand(0.15, 0.85), y: 1, ty: rand(0.18, 0.5), v: rand(0.5, 0.8), hue: (Math.random() * 360) | 0 })
+      }
+      for (const r of st.rockets) {
+        r.y -= r.v * sp * dt
+        if (r.y <= r.ty) { explode(st, r); r.dead = true }
+      }
+      st.rockets = st.rockets.filter((r) => !r.dead)
+      for (const s of st.sparks) {
+        s.vy += 0.4 * dt * sp
+        s.x += s.vx * dt * sp; s.y += s.vy * dt * sp
+        s.life -= dt * sp
+      }
+      st.sparks = st.sparks.filter((s) => s.life > 0)
+    },
+    draw(ctx, w, h, st) {
+      for (const r of st.rockets) {
+        ctx.globalAlpha = 0.9; ctx.fillStyle = `hsl(${r.hue},90%,75%)`
+        ctx.beginPath(); ctx.arc(r.x * w, r.y * h, Math.max(1.5, w * 0.004), 0, 6.28); ctx.fill()
+      }
+      for (const s of st.sparks) {
+        ctx.globalAlpha = Math.max(0, s.life / s.maxLife)
+        ctx.fillStyle = `hsl(${s.hue},90%,${s.lum}%)`
+        ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r * w, 0, 6.28); ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 闪烁星星：原地五角星，明暗呼吸（不下落）
+  twinkle: {
+    make(n) {
+      const arr = []
+      const count = Math.round(n * 1.4)
+      for (let i = 0; i < count; i++) arr.push({
+        x: Math.random(), y: Math.random(), size: rand(0.006, 0.02),
+        ph: Math.random() * 6.28, tw: rand(1, 3), col: SPARKLE_COLORS[(Math.random() * SPARKLE_COLORS.length) | 0],
+        points: Math.random() < 0.5 ? 4 : 5,
+      })
+      return arr
+    },
+    update(arr, dt, sp) { for (const p of arr) p.ph += p.tw * dt * sp },
+    draw(ctx, w, h, arr, color) {
+      for (const p of arr) {
+        const a = (Math.sin(p.ph) + 1) / 2
+        if (a < 0.04) continue
+        ctx.globalAlpha = a
+        ctx.fillStyle = p.col
+        drawStar(ctx, p.x * w, p.y * h, p.size * w * (0.5 + a * 0.7), p.points)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 雪花：六角雪花字符飘落 + 左右摇摆 + 自转
+  snow: {
+    glyphs: ['❄', '❅', '❆', '✻', '✼'],
+    make(n) {
+      const arr = []
+      for (let i = 0; i < n; i++) arr.push({
+        x: Math.random(), y: Math.random() * 1.2 - 0.2, v: rand(0.04, 0.12),
+        size: rand(0.012, 0.032), sway: rand(0.015, 0.05), ph: Math.random() * 6.28,
+        rot: Math.random() * 6.28, vr: rand(-1, 1),
+        g: TYPES.snow.glyphs[(Math.random() * 5) | 0],
+      })
+      return arr
+    },
+    update(arr, dt, sp) {
+      for (const p of arr) {
+        p.y += p.v * sp * dt; p.ph += dt * sp; p.rot += p.vr * dt * sp
+        if (p.y > 1.15) { p.y = -0.1; p.x = Math.random() }
+      }
+    },
+    draw(ctx, w, h, arr, color) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      for (const p of arr) {
+        const cx = (p.x + Math.sin(p.ph) * p.sway) * w
+        ctx.globalAlpha = 0.85
+        ctx.fillStyle = color
+        ctx.font = `${p.size * w}px ${"'Segoe UI Symbol',serif"}`
+        ctx.save(); ctx.translate(cx, p.y * h); ctx.rotate(p.rot)
+        ctx.fillText(p.g, 0, 0); ctx.restore()
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 四叶草：飘落 + 摇摆 + 自转
+  clover: {
+    glyphs: ['🍀', '☘', '🍀', '✤'],
+    make(n) {
+      const arr = []
+      for (let i = 0; i < n; i++) arr.push({
+        x: Math.random(), y: Math.random() * 1.2 - 0.2, v: rand(0.05, 0.13),
+        size: rand(0.018, 0.04), sway: rand(0.02, 0.06), ph: Math.random() * 6.28,
+        rot: Math.random() * 6.28, vr: rand(-1.5, 1.5),
+        g: TYPES.clover.glyphs[(Math.random() * 4) | 0],
+      })
+      return arr
+    },
+    update(arr, dt, sp) {
+      for (const p of arr) {
+        p.y += p.v * sp * dt; p.ph += dt * sp; p.rot += p.vr * dt * sp
+        if (p.y > 1.15) { p.y = -0.1; p.x = Math.random() }
+      }
+    },
+    draw(ctx, w, h, arr, color) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      for (const p of arr) {
+        const cx = (p.x + Math.sin(p.ph) * p.sway) * w
+        ctx.globalAlpha = 0.9
+        ctx.fillStyle = color
+        ctx.font = `${p.size * w}px ${"'Segoe UI Symbol','Apple Color Emoji',serif"}`
+        ctx.save(); ctx.translate(cx, p.y * h); ctx.rotate(p.rot * 0.4)
+        ctx.fillText(p.g, 0, 0); ctx.restore()
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 心：自下而上升起 + 摇摆 + 渐隐
+  hearts: {
+    glyphs: ['♥', '❤', '♡', '💗'],
+    make(n) {
+      const arr = []
+      for (let i = 0; i < n; i++) arr.push({
+        x: Math.random(), y: rand(0.5, 1.2), v: rand(0.07, 0.18),
+        size: rand(0.02, 0.05), sway: rand(0.02, 0.06), ph: Math.random() * 6.28,
+        g: TYPES.hearts.glyphs[(Math.random() * 4) | 0],
+      })
+      return arr
+    },
+    update(arr, dt, sp) {
+      for (const p of arr) {
+        p.y -= p.v * sp * dt; p.ph += dt * sp
+        if (p.y < -0.12) { p.y = 1.12; p.x = Math.random() }
+      }
+    },
+    draw(ctx, w, h, arr, color) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      for (const p of arr) {
+        const cx = (p.x + Math.sin(p.ph * 1.4) * p.sway) * w
+        const fade = p.y > 0.85 ? (1.12 - p.y) / 0.27 : (p.y < 0.1 ? Math.max(0, p.y / 0.1) : 1)
+        ctx.globalAlpha = 0.9 * Math.max(0, Math.min(1, fade))
+        ctx.fillStyle = color
+        ctx.font = `${p.size * w}px ${"'Segoe UI Symbol','Apple Color Emoji',serif"}`
+        ctx.fillText(p.g, cx, p.y * h)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
 }
 
-function drawStar(ctx, cx, cy, r) {
+function explode(st, r) {
+  const count = 22 + ((Math.random() * 16) | 0)
+  for (let i = 0; i < count; i++) {
+    const ang = (i / count) * 6.28 + rand(-0.1, 0.1)
+    const spd = rand(0.06, 0.20)
+    const life = rand(0.7, 1.4)
+    st.sparks.push({
+      x: r.x, y: r.ty, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      life, maxLife: life, hue: r.hue + rand(-20, 20), lum: 60 + ((Math.random() * 25) | 0),
+      r: rand(0.002, 0.005),
+    })
+  }
+}
+
+function drawStar(ctx, cx, cy, r, pts = 5) {
   ctx.beginPath()
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * 6.283 - 1.571
-    const a2 = a + 0.628
+  const step = Math.PI / pts
+  for (let i = 0; i < pts; i++) {
+    const a = (i / pts) * 6.283 - 1.571
+    const a2 = a + step
     ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
     ctx.lineTo(cx + Math.cos(a2) * r * 0.45, cy + Math.sin(a2) * r * 0.45)
   }
