@@ -1,0 +1,19 @@
+{
+  "name": "vibepic",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "小红书系氛围照片编辑器 — ASCII 网点 + 关键词标注 + 动效图层",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow/tfjs": "^4.22.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

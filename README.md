@@ -1,0 +1,44 @@
+# vibepic · 氛围照片编辑器
+
+小红书系照片二次创作工具：**ASCII 网点 + 关键词标注 + 氛围动效**。纯前端，零后端、零 API key。
+
+参考 pixpic 的局部 ASCII 化做法，叠加自动关键词标注与可导出的动效图层。
+
+## 三大模块
+
+1. **关键词标注** — 浏览器内 TensorFlow.js（COCO-SSD）识别画面物体 → 映射成「氛围词」词库（`person→us/duet`、`umbrella→rainy`、`potted plant→fresh/bloom`…），自动放置 `(fresh)` 这种括号标签。所有标签可拖动 / 双击改字 / 删除；可选字体（Mono/Sans/Serif/Script）、括号样式、字号、颜色。识别不到物体时按色调撒氛围词。
+2. **局部 ASCII** — 整图或拖框选区域转 ASCII 网点。可调密度、字符集（网点 ░▒▓ / 符号 #%* / 盲文点阵 / 代码符号）、采样原色或单色、不透明度、背景压暗。
+3. **氛围动效** — 可叠加的动画图层：ascii 网点雨滴（下落+滑动）、跳动音符、花朵绽放、浪花滚动、星星点点、花瓣飘落。可调密度/速度/主色。
+
+## 导出
+
+- **PNG** — 当前画面静态合成（base + ascii + 关键词 + 动效当前帧）。
+- **WebM** — 录制带动效的动画（2–12 秒可调）。
+- 分辨率：原图 / 中 / 小。
+
+## 开发
+
+```bash
+npm install
+npm run dev      # http://localhost:5180
+npm run build    # 产物在 dist/，可直接 vercel deploy
+```
+
+## 结构
+
+```
+src/
+  main.js              编排：载图/布局/区域框选/tab/导出/预览循环
+  modules/
+    vibeWords.js       COCO 类别 → 氛围词映射 + 色调推断
+    keywords.js        识别 + 可拖动 DOM 标签 + 导出数据
+    ascii.js           ASCII 网点渲染（整图/区域）
+    effects.js         动效粒子系统（归一化坐标，预览/导出共用）
+    exporter.js        PNG / WebM 合成与下载
+```
+
+## 技术取舍
+
+- 识别用浏览器端 `lite_mobilenet_v2`，免 API、免后端，但词汇限 COCO 80 类，故配「氛围词库」把死板物体名翻译成有质感的词，并允许手动改。
+- 动效粒子全部归一化坐标 `[0,1]`，预览按显示尺寸、导出按自然分辨率，同一套状态两处复用。
+- TF.js 走动态 `import()`，首屏不加载，点「智能识别」时才拉模型。

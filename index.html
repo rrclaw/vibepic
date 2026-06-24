@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vibepic · 氛围照片编辑器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Serif+Display&family=Caveat:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">vibepic<span class="dot">.</span></div>
+    <div class="brand-sub">ASCII 网点 · 关键词标注 · 氛围动效</div>
+    <div class="topbar-actions">
+      <button id="btn-upload" class="btn btn-ghost">上传照片</button>
+      <button id="btn-sample" class="btn btn-ghost">示例图</button>
+      <button id="btn-reset" class="btn btn-ghost">清空</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- STAGE -->
+    <section class="stage-wrap" id="stage-wrap">
+      <div class="stage-empty" id="stage-empty">
+        <div class="drop-hint">
+          <div class="drop-icon">⌁</div>
+          <p>拖入或上传一张照片开始</p>
+          <button id="btn-upload-2" class="btn btn-solid">选择照片</button>
+        </div>
+      </div>
+      <div class="stage" id="stage" hidden>
+        <canvas id="canvas-base"></canvas>
+        <canvas id="canvas-ascii"></canvas>
+        <canvas id="canvas-fx"></canvas>
+        <div id="layer-labels" class="layer-labels"></div>
+        <div id="region-box" class="region-box" hidden></div>
+      </div>
+    </section>
+
+    <!-- PANEL -->
+    <aside class="panel">
+      <nav class="tabs">
+        <button class="tab active" data-tab="keywords">关键词</button>
+        <button class="tab" data-tab="ascii">ASCII</button>
+        <button class="tab" data-tab="effects">动效</button>
+        <button class="tab" data-tab="export">导出</button>
+      </nav>
+
+      <!-- KEYWORDS -->
+      <div class="tab-pane active" data-pane="keywords">
+        <p class="hint">浏览器内识别画面物体，映射成氛围词。识别后所有标签可拖动、改字、删除。</p>
+        <button id="btn-detect" class="btn btn-solid full">⌁ 智能识别关键词</button>
+        <div id="detect-status" class="status"></div>
+        <div class="field">
+          <label>手动添加一个词</label>
+          <div class="row">
+            <input id="kw-input" type="text" placeholder="例如 fresh" />
+            <button id="kw-add" class="btn btn-ghost">+ 加</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>字体风格</label>
+          <div class="seg" id="kw-font">
+            <button class="seg-btn active" data-font="mono">Mono</button>
+            <button class="seg-btn" data-font="sans">Sans</button>
+            <button class="seg-btn" data-font="serif">Serif</button>
+            <button class="seg-btn" data-font="script">Script</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>括号样式</label>
+          <div class="seg" id="kw-bracket">
+            <button class="seg-btn active" data-bracket="round">( )</button>
+            <button class="seg-btn" data-bracket="square">[ ]</button>
+            <button class="seg-btn" data-bracket="none">无</button>
+          </div>
+        </div>
+        <div class="field row2">
+          <div>
+            <label>字号 <span id="kw-size-val">28</span></label>
+            <input id="kw-size" type="range" min="14" max="72" value="28" />
+          </div>
+          <div>
+            <label>颜色</label>
+            <input id="kw-color" type="color" value="#ffffff" />
+          </div>
+        </div>
+        <div class="field">
+          <label>词库主题（影响识别建议词）</label>
+          <select id="kw-theme">
+            <option value="auto">自动（按画面/色调）</option>
+            <option value="fresh">清新 fresh</option>
+            <option value="romance">浪漫 romance</option>
+            <option value="calm">治愈 calm</option>
+            <option value="city">都市 city</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ASCII -->
+      <div class="tab-pane" data-pane="ascii">
+        <p class="hint">把整图或框选区域转成 ASCII 网点。在画面上拖一个矩形即可框选局部。</p>
+        <div class="seg" id="ascii-scope">
+          <button class="seg-btn active" data-scope="region">框选区域</button>
+          <button class="seg-btn" data-scope="full">整图</button>
+        </div>
+        <button id="btn-ascii-apply" class="btn btn-solid full">✦ 生成 ASCII</button>
+        <button id="btn-ascii-clear" class="btn btn-ghost full">清除 ASCII 图层</button>
+        <div class="field">
+          <label>密度 <span id="ascii-density-val">90</span> 列</label>
+          <input id="ascii-density" type="range" min="30" max="200" value="90" />
+        </div>
+        <div class="field">
+          <label>字符集</label>
+          <select id="ascii-charset">
+            <option value="blocks">网点 ░▒▓█</option>
+            <option value="hash"># % * + . </option>
+            <option value="dots">⠁⠉⠛⣿ 盲文点阵</option>
+            <option value="code">{ } ; / = </option>
+          </select>
+        </div>
+        <div class="field">
+          <label>上色方式</label>
+          <div class="seg" id="ascii-color">
+            <button class="seg-btn active" data-acolor="sampled">采样原色</button>
+            <button class="seg-btn" data-acolor="mono">单色</button>
+          </div>
+          <input id="ascii-mono-color" type="color" value="#eafff2" style="margin-top:8px" />
+        </div>
+        <div class="field row2">
+          <div>
+            <label>不透明度 <span id="ascii-opacity-val">100</span></label>
+            <input id="ascii-opacity" type="range" min="20" max="100" value="100" />
+          </div>
+          <div>
+            <label>背景</label>
+            <div class="seg sm" id="ascii-bg">
+              <button class="seg-btn active" data-abg="transparent">透明</button>
+              <button class="seg-btn" data-abg="dark">压暗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EFFECTS -->
+      <div class="tab-pane" data-pane="effects">
+        <p class="hint">叠加动效图层。可多选叠加，导出 WebM 时会录下动画。</p>
+        <div class="fx-grid" id="fx-grid">
+          <button class="fx-card" data-fx="rain"><span>🌧</span>ascii 雨滴</button>
+          <button class="fx-card" data-fx="notes"><span>♪</span>跳动音符</button>
+          <button class="fx-card" data-fx="bloom"><span>❀</span>花朵绽放</button>
+          <button class="fx-card" data-fx="waves"><span>≈</span>浪花滚动</button>
+          <button class="fx-card" data-fx="sparkle"><span>✦</span>星星点点</button>
+          <button class="fx-card" data-fx="petals"><span>🌸</span>花瓣飘落</button>
+        </div>
+        <div class="field">
+          <label>密度 <span id="fx-amount-val">50</span></label>
+          <input id="fx-amount" type="range" min="10" max="100" value="50" />
+        </div>
+        <div class="field row2">
+          <div>
+            <label>速度 <span id="fx-speed-val">100</span>%</label>
+            <input id="fx-speed" type="range" min="20" max="200" value="100" />
+          </div>
+          <div>
+            <label>主色</label>
+            <input id="fx-color" type="color" value="#eafff2" />
+          </div>
+        </div>
+        <button id="btn-fx-clear" class="btn btn-ghost full">关闭所有动效</button>
+      </div>
+
+      <!-- EXPORT -->
+      <div class="tab-pane" data-pane="export">
+        <p class="hint">PNG 导出当前画面；WebM 录制带动效的动画（默认 5 秒）。</p>
+        <button id="btn-export-png" class="btn btn-solid full">⬇ 导出 PNG</button>
+        <div class="field">
+          <label>录制时长 <span id="rec-dur-val">5</span> 秒</label>
+          <input id="rec-dur" type="range" min="2" max="12" value="5" />
+        </div>
+        <button id="btn-export-webm" class="btn btn-solid full">⬇ 导出 WebM 动画</button>
+        <div id="export-status" class="status"></div>
+        <div class="field">
+          <label>导出分辨率</label>
+          <div class="seg" id="export-scale">
+            <button class="seg-btn active" data-scale="1">原图</button>
+            <button class="seg-btn" data-scale="0.66">中</button>
+            <button class="seg-btn" data-scale="0.5">小</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <input type="file" id="file-input" accept="image/*" hidden />
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
