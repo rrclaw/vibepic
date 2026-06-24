@@ -64,7 +64,8 @@ function mountBitmap(bmp, w, h) {
   layout()
   stageEmpty.hidden = true
   stage.hidden = false
-  toast('照片已载入 ✦ 试试「智能识别关键词」')
+  // 上传后自动生成一套默认设计（关键词+ASCII+动效+装饰），用户再微调
+  autoDesign()
 }
 
 // 从 URL（dataURL / blobURL）载入，走 <img>，自动处理 EXIF 朝向
@@ -201,6 +202,106 @@ function makeSample() {
   x.fillText('a quiet afternoon', 90, 700)
   return c.toDataURL()
 }
+
+// ================= 一键设计 =================
+const _rand = (a, b) => a + Math.random() * (b - a)
+const _pick = (arr) => arr[(Math.random() * arr.length) | 0]
+function _sample(arr, n) {
+  const a = [...arr]; const out = []
+  while (a.length && out.length < n) out.push(a.splice((Math.random() * a.length) | 0, 1)[0])
+  return out
+}
+function _avgColor(canvas) {
+  const t = document.createElement('canvas'); t.width = 40; t.height = 40
+  const c = t.getContext('2d'); c.drawImage(canvas, 0, 0, 40, 40)
+  const d = c.getImageData(0, 0, 40, 40).data
+  let r = 0, g = 0, b = 0, n = 0
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++ }
+  return { r: r / n, g: g / n, b: b / n }
+}
+function _tone({ r, g, b }) {
+  const bright = (r + g + b) / 3
+  if (g > r + 8 && g > b + 8) return 'fresh'
+  if (b > r + 8 && b >= g - 4) return 'calm'
+  if (r > 150 && b > 130 && g < r - 10) return 'blush'
+  if (r > 140 && g > 110 && b < 120) return 'warm'
+  return bright > 150 ? 'fresh' : 'calm'
+}
+const TONE = {
+  fresh: { theme: 'fresh', fxColor: '#eafff2', fx: ['petals', 'sparkle', 'clover', 'twinkle'], glyphs: ['flower1', 'flower2', 'spark', 'note1'], ddColor: '#ffffff' },
+  calm: { theme: 'calm', fxColor: '#e3f1ff', fx: ['sparkle', 'snow', 'twinkle', 'bloom'], glyphs: ['spark', 'star', 'note2', 'heart'], ddColor: '#ffffff' },
+  warm: { theme: 'romance', fxColor: '#ffe7c2', fx: ['notes', 'sparkle', 'hearts', 'fireworks'], glyphs: ['note1', 'note2', 'clef', 'spark'], ddColor: '#e0a64b' },
+  blush: { theme: 'romance', fxColor: '#ffd9e6', fx: ['hearts', 'petals', 'sparkle', 'bloom'], glyphs: ['heart', 'flower1', 'spark', 'note3'], ddColor: '#ffffff' },
+}
+function _setSeg(sel, attr, val) {
+  $(sel)?.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset[attr] === val))
+}
+function _syncAsciiUI() {
+  const o = state.asciiOpts
+  _setSeg('#ascii-mode', 'mode', o.mode)
+  $('#ascii-thr-field').style.display = o.mode === 'highlight' ? '' : 'none'
+  $('#ascii-thr').value = Math.round(o.threshold * 100); $('#ascii-thr-val').textContent = o.threshold.toFixed(2)
+  $('#ascii-density').value = o.density; $('#ascii-density-val').textContent = o.density
+  $('#ascii-charset').value = o.charset
+  _setSeg('#ascii-color', 'acolor', o.colorMode); $('#ascii-mono-color').value = o.monoColor
+  _setSeg('#ascii-scope', 'scope', o.scope)
+}
+
+async function autoDesign() {
+  if (!state.img) return toast('先上传一张照片')
+  // 清掉旧图层（换一版从干净开始）
+  keywords.clearAll(); clearAscii(asciiCanvas); state.hasAscii = false
+  state.region = null; state.asciiRegionNorm = null; regionBox.hidden = true
+  effects.clear(); doodles.clear()
+  document.querySelectorAll('#fx-grid .fx-card').forEach((c) => c.classList.remove('active'))
+
+  const tone = _tone(_avgColor(baseCanvas))
+  const T = TONE[tone]
+
+  // 1) ASCII：整图高光散点
+  state.asciiOpts = {
+    mode: 'highlight', threshold: +_rand(0.6, 0.74).toFixed(2),
+    density: _pick([90, 110, 130]), charset: _pick(['sparkle', 'arrows', 'star']),
+    colorMode: 'mono', monoColor: '#ffffff', opacity: 100, bg: 'transparent', scope: 'full',
+  }
+  renderAscii(baseCanvas, asciiCanvas, { ...state.asciiOpts, region: null })
+  state.hasAscii = true
+  _syncAsciiUI()
+
+  // 2) 动效：按色调挑 1~2 个，中等密度
+  effects.color = T.fxColor
+  const chosenFx = _sample(T.fx, 1 + ((Math.random() < 0.6) ? 1 : 0))
+  const amt = 38
+  $('#fx-amount').value = amt; $('#fx-amount-val').textContent = amt
+  effects.amount = amt
+  for (const t of chosenFx) {
+    effects.add(t)
+    document.querySelector(`#fx-grid .fx-card[data-fx="${t}"]`)?.classList.add('active')
+  }
+  $('#fx-color').value = T.fxColor
+  refreshFxRegionUI()
+
+  // 3) 装饰：撒几个音符/花朵贴纸
+  doodles.color = T.ddColor
+  _setSeg('#dd-preset', 'ddcol', T.ddColor === '#e0a64b' ? '#e0a64b' : '#ffffff')
+  $('#dd-color').value = T.ddColor
+  const spots = _sample([[0.18, 0.2], [0.82, 0.24], [0.26, 0.72], [0.78, 0.68], [0.5, 0.16], [0.62, 0.5]], 2 + ((Math.random() * 2) | 0))
+  const gl = _sample(T.glyphs, spots.length)
+  spots.forEach((s, i) => doodles.addGlyph(gl[i] || 'spark', s[0], s[1]))
+  doodles.selected = null
+  syncDoodleScale()
+
+  toast('已生成默认设计 ✦ 各 tab 里逐层微调')
+
+  // 4) 关键词识别（异步，最后跑，避免卡住前面的即时效果）
+  $('#detect-status').textContent = ''
+  try {
+    await keywords.detect(baseCanvas, T.theme, (m) => ($('#detect-status').textContent = m))
+  } catch (err) {
+    console.error(err); $('#detect-status').textContent = '关键词识别失败：' + (err?.message || err)
+  }
+}
+$('#btn-auto').addEventListener('click', autoDesign)
 
 // ================= TABS =================
 document.querySelectorAll('.tab').forEach((t) => {
