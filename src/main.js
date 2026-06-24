@@ -23,8 +23,9 @@ const state = {
   natW: 0, natH: 0,
   dispW: 0, dispH: 0,
   hasAscii: false,
-  region: null,        // natural-pixel region for ascii
-  asciiOpts: { density: 90, charset: 'blocks', colorMode: 'sampled', monoColor: '#eafff2', opacity: 100, bg: 'transparent', scope: 'region' },
+  region: null,           // natural-pixel region for ascii mask
+  asciiRegionNorm: null,  // normalized [0,1] rect for box display
+  asciiOpts: { mode: 'highlight', threshold: 0.6, density: 100, charset: 'sparkle', colorMode: 'mono', monoColor: '#ffffff', opacity: 100, bg: 'transparent', scope: 'full' },
   exportScale: 1,
   recDur: 5,
 }
@@ -161,7 +162,9 @@ $('#btn-sample').addEventListener('click', () => {
 })
 $('#btn-reset').addEventListener('click', () => {
   keywords.clearAll(); clearAscii(asciiCanvas); state.hasAscii = false
+  state.region = null; state.asciiRegionNorm = null; regionBox.hidden = true
   effects.clear(); document.querySelectorAll('.fx-card').forEach((c) => c.classList.remove('active'))
+  if (typeof refreshFxRegionUI === 'function') refreshFxRegionUI()
   toast('已清空图层')
 })
 
@@ -203,7 +206,9 @@ document.querySelectorAll('.tab').forEach((t) => {
     document.querySelectorAll('.tab-pane').forEach((x) => x.classList.remove('active'))
     t.classList.add('active')
     $(`.tab-pane[data-pane="${t.dataset.tab}"]`).classList.add('active')
-    updateRegionMode()
+    // 离开 ASCII tab 时收起遮罩框
+    if (t.dataset.tab !== 'ascii') regionBox.hidden = true
+    else if (state.asciiOpts.scope === 'region' && state.asciiRegionNorm) showBoxFromNorm(state.asciiRegionNorm)
   })
 })
 
@@ -247,10 +252,92 @@ $('#kw-size').addEventListener('input', (e) => {
 })
 $('#kw-color').addEventListener('input', (e) => keywords.setStyle({ color: e.target.value }))
 
+// ================= 通用区域框选（一次性） =================
+// onDone 收到归一化矩形 {x,y,w,h}（相对 stage，0..1）；w/h 太小视为取消返回 null。
+let regionDraw = { active: false, cb: null, start: null }
+function beginRegionDraw(cb) {
+  if (!state.img) return toast('先上传一张照片')
+  regionDraw = { active: true, cb, start: null }
+  labelsLayer.style.pointerEvents = 'none'
+  stage.style.cursor = 'crosshair'
+  toast('在画面上拖一个矩形（松手完成）')
+}
+function showBoxFromNorm(norm) {
+  if (!norm) { regionBox.hidden = true; return }
+  const r = stage.getBoundingClientRect()
+  regionBox.hidden = false
+  regionBox.style.left = norm.x * r.width + 'px'
+  regionBox.style.top = norm.y * r.height + 'px'
+  regionBox.style.width = norm.w * r.width + 'px'
+  regionBox.style.height = norm.h * r.height + 'px'
+}
+stage.addEventListener('pointerdown', (e) => {
+  if (!regionDraw.active) return
+  const rect = stage.getBoundingClientRect()
+  regionDraw.start = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  regionBox.hidden = false
+  regionBox.style.left = regionDraw.start.x + 'px'
+  regionBox.style.top = regionDraw.start.y + 'px'
+  regionBox.style.width = '0px'; regionBox.style.height = '0px'
+  stage.setPointerCapture(e.pointerId)
+})
+stage.addEventListener('pointermove', (e) => {
+  if (!regionDraw.active || !regionDraw.start) return
+  const rect = stage.getBoundingClientRect()
+  const cx = Math.max(0, Math.min(rect.width, e.clientX - rect.left))
+  const cy = Math.max(0, Math.min(rect.height, e.clientY - rect.top))
+  const x = Math.min(cx, regionDraw.start.x), y = Math.min(cy, regionDraw.start.y)
+  regionBox.style.left = x + 'px'; regionBox.style.top = y + 'px'
+  regionBox.style.width = Math.abs(cx - regionDraw.start.x) + 'px'
+  regionBox.style.height = Math.abs(cy - regionDraw.start.y) + 'px'
+})
+stage.addEventListener('pointerup', (e) => {
+  if (!regionDraw.active || !regionDraw.start) return
+  const rect = stage.getBoundingClientRect()
+  const cx = Math.max(0, Math.min(rect.width, e.clientX - rect.left))
+  const cy = Math.max(0, Math.min(rect.height, e.clientY - rect.top))
+  const x = Math.min(cx, regionDraw.start.x), y = Math.min(cy, regionDraw.start.y)
+  const w = Math.abs(cx - regionDraw.start.x), h = Math.abs(cy - regionDraw.start.y)
+  const cb = regionDraw.cb
+  regionDraw = { active: false, cb: null, start: null }
+  stage.style.cursor = 'default'
+  labelsLayer.style.pointerEvents = 'auto'
+  if (w < 8 || h < 8) { regionBox.hidden = true; cb?.(null); return }
+  cb?.({ x: x / rect.width, y: y / rect.height, w: w / rect.width, h: h / rect.height })
+})
+
 // ================= ASCII =================
-seg('#ascii-scope', 'scope', (v) => { state.asciiOpts.scope = v; updateRegionMode() })
+seg('#ascii-mode', 'mode', (v) => {
+  state.asciiOpts.mode = v
+  $('#ascii-thr-field').style.display = v === 'highlight' ? '' : 'none'
+})
+seg('#ascii-scope', 'scope', (v) => {
+  state.asciiOpts.scope = v
+  if (v === 'region') {
+    beginRegionDraw((norm) => {
+      if (!norm) { // 取消 → 回退整图
+        state.region = null; state.asciiRegionNorm = null
+        document.querySelector('#ascii-scope .seg-btn[data-scope="full"]').click()
+        return
+      }
+      state.asciiRegionNorm = norm
+      state.region = {
+        x: Math.round(norm.x * state.natW), y: Math.round(norm.y * state.natH),
+        w: Math.round(norm.w * state.natW), h: Math.round(norm.h * state.natH),
+      }
+      showBoxFromNorm(norm)
+      toast('遮罩已框定，点「生成 ASCII」')
+    })
+  } else {
+    regionBox.hidden = true
+  }
+})
 seg('#ascii-color', 'acolor', (v) => (state.asciiOpts.colorMode = v))
 seg('#ascii-bg', 'abg', (v) => (state.asciiOpts.bg = v))
+$('#ascii-thr').addEventListener('input', (e) => {
+  state.asciiOpts.threshold = +e.target.value / 100
+  $('#ascii-thr-val').textContent = (state.asciiOpts.threshold).toFixed(2)
+})
 $('#ascii-density').addEventListener('input', (e) => {
   state.asciiOpts.density = +e.target.value
   $('#ascii-density-val').textContent = e.target.value
@@ -265,7 +352,7 @@ $('#btn-ascii-apply').addEventListener('click', () => {
   if (!state.img) return toast('先上传一张照片')
   let region = null
   if (state.asciiOpts.scope === 'region') {
-    if (!state.region) return toast('先在画面上拖一个矩形框选区域')
+    if (!state.region) return toast('先框选一个遮罩区域')
     region = state.region
   }
   renderAscii(baseCanvas, asciiCanvas, { ...state.asciiOpts, region })
@@ -276,58 +363,48 @@ $('#btn-ascii-clear').addEventListener('click', () => {
   clearAscii(asciiCanvas); state.hasAscii = false; toast('已清除 ASCII 图层')
 })
 
-// ----- region selection -----
-let regionMode = false
-function updateRegionMode() {
-  const asciiActive = $('.tab.active')?.dataset.tab === 'ascii'
-  regionMode = asciiActive && state.asciiOpts.scope === 'region'
-  labelsLayer.style.pointerEvents = regionMode ? 'none' : 'auto'
-  stage.style.cursor = regionMode ? 'crosshair' : 'default'
-}
-updateRegionMode()
-
-let regStart = null
-stage.addEventListener('pointerdown', (e) => {
-  if (!regionMode || !state.img) return
-  const rect = stage.getBoundingClientRect()
-  regStart = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  regionBox.hidden = false
-  regionBox.style.left = regStart.x + 'px'
-  regionBox.style.top = regStart.y + 'px'
-  regionBox.style.width = '0px'
-  regionBox.style.height = '0px'
-  stage.setPointerCapture(e.pointerId)
-})
-stage.addEventListener('pointermove', (e) => {
-  if (!regStart) return
-  const rect = stage.getBoundingClientRect()
-  const cx = Math.max(0, Math.min(rect.width, e.clientX - rect.left))
-  const cy = Math.max(0, Math.min(rect.height, e.clientY - rect.top))
-  const x = Math.min(cx, regStart.x), y = Math.min(cy, regStart.y)
-  const w = Math.abs(cx - regStart.x), h = Math.abs(cy - regStart.y)
-  regionBox.style.left = x + 'px'; regionBox.style.top = y + 'px'
-  regionBox.style.width = w + 'px'; regionBox.style.height = h + 'px'
-})
-stage.addEventListener('pointerup', (e) => {
-  if (!regStart) return
-  const rect = stage.getBoundingClientRect()
-  const cx = Math.max(0, Math.min(rect.width, e.clientX - rect.left))
-  const cy = Math.max(0, Math.min(rect.height, e.clientY - rect.top))
-  const x = Math.min(cx, regStart.x), y = Math.min(cy, regStart.y)
-  const w = Math.abs(cx - regStart.x), h = Math.abs(cy - regStart.y)
-  regStart = null
-  if (w < 8 || h < 8) { regionBox.hidden = true; state.region = null; return }
-  const s = fontScale() // natural / display
-  state.region = { x: Math.round(x * s), y: Math.round(y * s), w: Math.round(w * s), h: Math.round(h * s) }
-})
-
 // ================= EFFECTS =================
+function refreshFxRegionUI() {
+  const list = effects.list()
+  const wrap = $('#fx-region-edit')
+  wrap.hidden = list.length === 0
+  const sel = $('#fx-region-target')
+  const labels = { rain: '🌧 雨滴', notes: '♪ 音符', bloom: '❀ 花开', waves: '≈ 浪花', sparkle: '✦ 星星', petals: '🌸 花瓣' }
+  const prev = sel.value
+  sel.innerHTML = ''
+  for (const t of list) {
+    const o = document.createElement('option')
+    o.value = t
+    o.textContent = labels[t] + (effects.isFull(t) ? '（全屏）' : '（已框定）')
+    sel.appendChild(o)
+  }
+  if (list.includes(prev)) sel.value = prev
+}
 document.querySelectorAll('.fx-card').forEach((card) => {
   card.addEventListener('click', () => {
     const type = card.dataset.fx
     effects.toggle(type)
     card.classList.toggle('active', effects.has(type))
+    refreshFxRegionUI()
   })
+})
+$('#btn-fx-region').addEventListener('click', () => {
+  const type = $('#fx-region-target').value
+  if (!type) return
+  beginRegionDraw((norm) => {
+    if (!norm) return
+    effects.setRegion(type, norm)
+    $('#fx-region-status').textContent = `「${type}」已框定范围 ✦`
+    refreshFxRegionUI()
+    setTimeout(() => (regionBox.hidden = true), 600)
+  })
+})
+$('#btn-fx-region-full').addEventListener('click', () => {
+  const type = $('#fx-region-target').value
+  if (!type) return
+  effects.setRegion(type, null)
+  $('#fx-region-status').textContent = `「${type}」已恢复全屏`
+  refreshFxRegionUI()
 })
 $('#fx-amount').addEventListener('input', (e) => {
   $('#fx-amount-val').textContent = e.target.value
@@ -341,6 +418,7 @@ $('#fx-color').addEventListener('input', (e) => (effects.color = e.target.value)
 $('#btn-fx-clear').addEventListener('click', () => {
   effects.clear()
   document.querySelectorAll('.fx-card').forEach((c) => c.classList.remove('active'))
+  refreshFxRegionUI()
 })
 
 // ================= EXPORT =================

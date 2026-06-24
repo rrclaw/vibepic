@@ -255,34 +255,57 @@ function drawStar(ctx, cx, cy, r) {
   ctx.fill()
 }
 
+const FULL = { x: 0, y: 0, w: 1, h: 1 }
+
 export class Effects {
   constructor() {
-    this.active = new Map()   // type -> particle state
+    this.active = new Map()   // type -> { state, region }
     this.amount = 50
     this.speed = 1
     this.color = '#eafff2'
   }
   has(type) { return this.active.has(type) }
+  list() { return [...this.active.keys()] }
   toggle(type) { this.has(type) ? this.remove(type) : this.add(type) }
   add(type) {
     if (!TYPES[type]) return
     const n = Math.round(8 + (this.amount / 100) * 90)
-    this.active.set(type, TYPES[type].make(n))
+    const prev = this.active.get(type)
+    this.active.set(type, { state: TYPES[type].make(n), region: prev?.region || { ...FULL } })
   }
   remove(type) { this.active.delete(type) }
   clear() { this.active.clear() }
   setAmount(v) {
     this.amount = v
-    // 重新生成各动效粒子数
-    for (const type of [...this.active.keys()]) this.add(type)
+    for (const type of this.list()) this.add(type) // 重新生成粒子，保留 region
+  }
+  setRegion(type, region) {
+    const ent = this.active.get(type)
+    if (ent) ent.region = region || { ...FULL }
+  }
+  getRegion(type) { return this.active.get(type)?.region || { ...FULL } }
+  isFull(type) {
+    const r = this.getRegion(type)
+    return r.x === 0 && r.y === 0 && r.w === 1 && r.h === 1
   }
   get isEmpty() { return this.active.size === 0 }
 
   update(dt) {
     const sp = this.speed
-    for (const [type, st] of this.active) TYPES[type].update(st, dt, sp)
+    for (const [type, ent] of this.active) TYPES[type].update(ent.state, dt, sp)
   }
-  draw(ctx, w, h) {
-    for (const [type, st] of this.active) TYPES[type].draw(ctx, w, h, st, this.color)
+  // 每个动效裁剪到自己的 region；归一化粒子映射进该子矩形。
+  draw(ctx, W, H) {
+    for (const [type, ent] of this.active) {
+      const reg = ent.region || FULL
+      const rx = reg.x * W, ry = reg.y * H, rw = reg.w * W, rh = reg.h * H
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(rx, ry, rw, rh)
+      ctx.clip()
+      ctx.translate(rx, ry)
+      TYPES[type].draw(ctx, rw, rh, ent.state, this.color)
+      ctx.restore()
+    }
   }
 }

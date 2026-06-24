@@ -100,33 +100,49 @@
 
       <!-- ASCII -->
       <div class="tab-pane" data-pane="ascii">
-        <p class="hint">把整图或框选区域转成 ASCII 网点。在画面上拖一个矩形即可框选局部。</p>
-        <div class="seg" id="ascii-scope">
-          <button class="seg-btn active" data-scope="region">框选区域</button>
-          <button class="seg-btn" data-scope="full">整图</button>
+        <p class="hint">高光网点：只在画面亮部撒字符（像 pixpic 那样顺着受光区域长出来），整图生效、不用框。想只处理局部时可切「框选遮罩」。</p>
+        <div class="field">
+          <label>模式</label>
+          <div class="seg" id="ascii-mode">
+            <button class="seg-btn active" data-mode="highlight">高光网点</button>
+            <button class="seg-btn" data-mode="fill">填充</button>
+          </div>
+        </div>
+        <div class="field" id="ascii-thr-field">
+          <label>高光阈值 <span id="ascii-thr-val">0.60</span>（越高越稀疏，只留最亮处）</label>
+          <input id="ascii-thr" type="range" min="20" max="90" value="60" />
+        </div>
+        <div class="field">
+          <label>范围</label>
+          <div class="seg" id="ascii-scope">
+            <button class="seg-btn active" data-scope="full">整图</button>
+            <button class="seg-btn" data-scope="region">框选遮罩</button>
+          </div>
         </div>
         <button id="btn-ascii-apply" class="btn btn-solid full">✦ 生成 ASCII</button>
         <button id="btn-ascii-clear" class="btn btn-ghost full">清除 ASCII 图层</button>
         <div class="field">
-          <label>密度 <span id="ascii-density-val">90</span> 列</label>
-          <input id="ascii-density" type="range" min="30" max="200" value="90" />
+          <label>密度 <span id="ascii-density-val">100</span> 列</label>
+          <input id="ascii-density" type="range" min="30" max="240" value="100" />
         </div>
         <div class="field">
           <label>字符集</label>
           <select id="ascii-charset">
-            <option value="blocks">网点 ░▒▓█</option>
-            <option value="hash"># % * + . </option>
+            <option value="sparkle">高光网点 ` · &gt; * #</option>
+            <option value="star">星花 · * ✳ ❋ #</option>
+            <option value="hash"># % * + .</option>
+            <option value="blocks">实心网点 ░▒▓█</option>
             <option value="dots">⠁⠉⠛⣿ 盲文点阵</option>
-            <option value="code">{ } ; / = </option>
+            <option value="code">{ } ; / =</option>
           </select>
         </div>
         <div class="field">
           <label>上色方式</label>
           <div class="seg" id="ascii-color">
-            <button class="seg-btn active" data-acolor="sampled">采样原色</button>
-            <button class="seg-btn" data-acolor="mono">单色</button>
+            <button class="seg-btn active" data-acolor="mono">单色</button>
+            <button class="seg-btn" data-acolor="sampled">采样原色</button>
           </div>
-          <input id="ascii-mono-color" type="color" value="#eafff2" style="margin-top:8px" />
+          <input id="ascii-mono-color" type="color" value="#ffffff" style="margin-top:8px" />
         </div>
         <div class="field row2">
           <div>
@@ -145,7 +161,7 @@
 
       <!-- EFFECTS -->
       <div class="tab-pane" data-pane="effects">
-        <p class="hint">叠加动效图层。可多选叠加，导出 WebM 时会录下动画。</p>
+        <p class="hint">叠加动效图层，可多选。每个动效能单独框定范围（像图里只有灯下 / 伞下有动效），不框=全屏。导出 WebM 会录下动画。</p>
         <div class="fx-grid" id="fx-grid">
           <button class="fx-card" data-fx="rain"><span>🌧</span>ascii 雨滴</button>
           <button class="fx-card" data-fx="notes"><span>♪</span>跳动音符</button>
@@ -153,6 +169,15 @@
           <button class="fx-card" data-fx="waves"><span>≈</span>浪花滚动</button>
           <button class="fx-card" data-fx="sparkle"><span>✦</span>星星点点</button>
           <button class="fx-card" data-fx="petals"><span>🌸</span>花瓣飘落</button>
+        </div>
+        <div class="field region-edit" id="fx-region-edit" hidden>
+          <label>动效范围（只让选中的动效在这块区域里播）</label>
+          <select id="fx-region-target"></select>
+          <div class="row" style="margin-top:8px">
+            <button id="btn-fx-region" class="btn btn-ghost" style="flex:1">▢ 在画面框选范围</button>
+            <button id="btn-fx-region-full" class="btn btn-ghost">全屏</button>
+          </div>
+          <div class="status" id="fx-region-status"></div>
         </div>
         <div class="field">
           <label>密度 <span id="fx-amount-val">50</span></label>
