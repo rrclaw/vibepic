@@ -275,13 +275,14 @@
 
       <!-- EXPORT -->
       <div class="tab-pane" data-pane="export">
-        <p class="hint">PNG 导出当前画面；WebM 录制带动效的动画（默认 5 秒）。</p>
+        <p class="hint">PNG = 当前画面静图；视频/GIF = 录制带动效的动画。GIF 到处自动播但 256 色、文件较大；视频更清晰（优先 MP4）。</p>
         <button id="btn-export-png" class="btn btn-solid full">⬇ 导出 PNG</button>
         <div class="field">
           <label>录制时长 <span id="rec-dur-val">5</span> 秒</label>
           <input id="rec-dur" type="range" min="2" max="12" value="5" />
         </div>
-        <button id="btn-export-webm" class="btn btn-solid full">⬇ 导出 WebM 动画</button>
+        <button id="btn-export-webm" class="btn btn-solid full">⬇ 导出视频（MP4 / WebM）</button>
+        <button id="btn-export-gif" class="btn btn-solid full">⬇ 导出 GIF（12fps · 长边≤800）</button>
         <div id="export-status" class="status"></div>
         <div class="field">
           <label>导出分辨率</label>

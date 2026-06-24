@@ -55,13 +55,14 @@ export function exportWebM({ base, ascii, hasAscii, effects, doodles, labels, fo
     const ctx = c.getContext('2d')
 
     const stream = c.captureStream(30)
-    let mime = 'video/webm;codecs=vp9'
-    if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm;codecs=vp8'
-    if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm'
+    // 优先 MP4（Safari 支持，手机/剪辑/Live Photo 更友好），否则回退 WebM
+    const cands = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    const mime = cands.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm'
+    const outType = mime.startsWith('video/mp4') ? 'video/mp4' : 'video/webm'
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 })
     const chunks = []
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
-    rec.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }))
+    rec.onstop = () => resolve(new Blob(chunks, { type: outType }))
     rec.onerror = (e) => reject(e.error || e)
 
     let last = performance.now()
@@ -83,6 +84,40 @@ export function exportWebM({ base, ascii, hasAscii, effects, doodles, labels, fo
     }
     requestAnimationFrame(frame)
   })
+}
+
+// 导出 GIF（256 色，固定 fps，长边限制以控体积）。gifenc 动态加载。
+export async function exportGIF({ base, ascii, hasAscii, effects, doodles, labels, fontScale, scale, duration, fps = 12, maxSide = 800, onTick }) {
+  const { GIFEncoder, quantize, applyPalette } = await import('gifenc')
+  // GIF 尺寸：在 scale 基础上再把长边限制到 maxSide
+  const longest = Math.max(base.width, base.height) * scale
+  const gscale = scale * Math.min(1, maxSide / longest)
+  const tW = Math.max(2, Math.round(base.width * gscale))
+  const tH = Math.max(2, Math.round(base.height * gscale))
+  const c = document.createElement('canvas')
+  c.width = tW; c.height = tH
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  const enc = GIFEncoder()
+  const frames = Math.max(2, Math.round(duration * fps))
+  const delay = Math.round(1000 / fps)
+  const dt = 1 / fps
+  const lblScale = fontScale * gscale
+
+  for (let i = 0; i < frames; i++) {
+    drawBackground(ctx, base, ascii, hasAscii, tW, tH)
+    if (effects) { effects.update(dt); effects.draw(ctx, tW, tH) }
+    if (doodles) { doodles.update(dt); doodles.draw(ctx, tW, tH) }
+    drawLabels(ctx, labels, tW, tH, lblScale)
+    const { data } = ctx.getImageData(0, 0, tW, tH)
+    const palette = quantize(data, 256, { format: 'rgb444' })
+    const index = applyPalette(data, palette, 'rgb444')
+    enc.writeFrame(index, tW, tH, { palette, delay })
+    onTick?.((i + 1) / frames)
+    // 让出主线程，避免卡死 UI
+    if (i % 4 === 3) await new Promise((r) => requestAnimationFrame(r))
+  }
+  enc.finish()
+  return new Blob([enc.bytes()], { type: 'image/gif' })
 }
 
 export function download(blob, filename) {

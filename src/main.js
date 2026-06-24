@@ -3,7 +3,7 @@ import { Keywords } from './modules/keywords.js'
 import { renderAscii, clearAscii } from './modules/ascii.js'
 import { Effects } from './modules/effects.js'
 import { Doodles } from './modules/doodles.js'
-import { exportPNG, exportWebM, download } from './modules/exporter.js'
+import { exportPNG, exportWebM, exportGIF, download } from './modules/exporter.js'
 
 // ---------- refs ----------
 const $ = (s) => document.querySelector(s)
@@ -664,11 +664,34 @@ $('#btn-export-webm').addEventListener('click', async () => {
       scale: state.exportScale, duration: state.recDur,
       onTick: (p) => (status.textContent = `录制中… ${Math.round(p * 100)}%`),
     })
-    download(blob, `vibepic-${Date.now()}.webm`)
-    status.textContent = 'WebM 已导出 ✦'
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+    download(blob, `vibepic-${Date.now()}.${ext}`)
+    status.textContent = `视频已导出（${ext.toUpperCase()}）✦`
     toast('动画已导出 ✦')
   } catch (err) {
     console.error(err); status.textContent = '录制失败：' + (err?.message || err)
+  } finally {
+    previewPaused = false
+  }
+})
+$('#btn-export-gif').addEventListener('click', async () => {
+  if (!state.img) return toast('先上传一张照片')
+  if (effects.isEmpty && doodles.isEmpty) return toast('先加一个动效或装饰再导 GIF')
+  const status = $('#export-status')
+  previewPaused = true
+  status.textContent = 'GIF 编码中… 0%'
+  try {
+    const blob = await exportGIF({
+      base: baseCanvas, ascii: asciiCanvas, hasAscii: state.hasAscii,
+      effects, doodles, labels: keywords.getExportLabels(), fontScale: fontScale(),
+      scale: state.exportScale, duration: state.recDur, fps: 12, maxSide: 800,
+      onTick: (p) => (status.textContent = `GIF 编码中… ${Math.round(p * 100)}%`),
+    })
+    download(blob, `vibepic-${Date.now()}.gif`)
+    status.textContent = `GIF 已导出 ✦ ${(blob.size / 1048576).toFixed(1)}MB`
+    toast('GIF 已导出 ✦')
+  } catch (err) {
+    console.error(err); status.textContent = 'GIF 导出失败：' + (err?.message || err)
   } finally {
     previewPaused = false
   }

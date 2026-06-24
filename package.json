@@ -12,6 +12,7 @@
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.22.0",
+    "gifenc": "^1.0.3",
     "heic2any": "^0.0.4"
   },
   "devDependencies": {
