@@ -177,15 +177,36 @@ export class Keywords {
       placed.push(lab)
     }
 
-    // 没识别到物体 → 撒氛围词
-    if (placed.length === 0) {
-      const words = ambientWords(theme, colorPool, 5)
-      const spots = [[0.2, 0.18], [0.72, 0.22], [0.3, 0.7], [0.78, 0.66], [0.5, 0.42]]
-      words.forEach((w, i) => this.add(w, spots[i][0], spots[i][1]))
-      onStatus?.(`未识别到明确物体，撒了 ${words.length} 个氛围词 ✦`)
-      return 0
+    // 关键：识别词通常很少（一张人像可能只认出 person→us）。
+    // 参考图里大部分是「撒上去」的氛围词，所以无论识别到几个，都补到 6~9 个。
+    const target = 7 + ((W + H) % 3)  // 7~9，按图尺寸稳定
+    const need = Math.max(0, target - placed.length)
+    if (need > 0) {
+      const words = ambientWords(theme, colorPool, need + 2)
+      // 候选撒点（分散在画面），避开已放置的
+      const grid = [
+        [0.16, 0.16], [0.5, 0.12], [0.84, 0.17], [0.12, 0.42], [0.88, 0.4],
+        [0.2, 0.7], [0.5, 0.8], [0.8, 0.72], [0.34, 0.5], [0.66, 0.52], [0.5, 0.32],
+      ]
+      let gi = 0
+      for (const w of words) {
+        if (placed.length >= target) break
+        // 找一个不和已有标签太近的点
+        let spot = null
+        for (let tries = 0; tries < grid.length; tries++) {
+          const cand = grid[(gi++) % grid.length]
+          const clash = placed.some((q) => Math.abs(q.xN - cand[0]) < 0.12 && Math.abs(q.yN - cand[1]) < 0.07)
+          if (!clash) { spot = cand; break }
+        }
+        if (!spot) spot = grid[(gi++) % grid.length]
+        placed.push(this.add(w, spot[0], spot[1]))
+      }
     }
-    onStatus?.(`识别到 ${placed.length} 处，已标注 ✦ 可拖动微调`)
+
+    const detected = preds.length
+    onStatus?.(detected > 0
+      ? `识别到 ${detected} 处 + 补了氛围词，共 ${placed.length} 个 ✦ 可拖动/改字/删除`
+      : `未识别到明确物体，撒了 ${placed.length} 个氛围词 ✦`)
     return placed.length
   }
 

@@ -4,9 +4,11 @@
 // region 仅作可选遮罩（null = 整图）。
 
 const CHARSETS = {
-  sparkle: ' `.·:>*+#',   // 高光网点：由暗到亮的稀疏字符
-  star: ' .·*✳❋#',        // 雪花/星形高光
-  hash: ' .:-=+*#%@',
+  // 高光集：低位也是醒目符号（不放细点），亮度越高符号越重
+  sparkle: [' ', '>', '+', '*', '✳', '#'],          // 散点星花（pixpic 风）
+  star: [' ', '*', '✦', '✳', '❋', '❀'],             // 星花朵
+  hash: [' ', '+', '*', '#', '%', '@'],
+  arrows: [' ', '·', '>', '»', '*', '#'],            // 含少量点，更像图7
   blocks: ' ░▒▓█',
   dots: ' ⠁⠉⠋⠛⠟⠿⡿⣿',
   code: ' .,:;|/\\(){}#',
@@ -56,8 +58,11 @@ export function renderAscii(sourceCanvas, asciiCanvas, opts) {
       let ci, r, g, b
       if (mode === 'highlight') {
         if (lum.l < thr) continue // 暗部留空 → 稀疏高光
-        const t = (lum.l - thr) / (1 - thr + 1e-6)
-        ci = 1 + Math.min(chars.length - 2, Math.floor(t * (chars.length - 1)))
+        let t = (lum.l - thr) / (1 - thr + 1e-6)
+        t = Math.pow(t, 0.55) // gamma 提亮：让 * ✳ # 等重符号大量出现，而非全是低位
+        // 加一点位置抖动，避免亮度分层成带状，更像手撒的散点
+        const jitter = (((rx * 7 + ry * 13) % 5) - 2) * 0.06
+        ci = 1 + Math.min(chars.length - 2, Math.max(0, Math.floor((t + jitter) * (chars.length - 1))))
       } else {
         ci = Math.min(chars.length - 1, Math.floor(lum.l * (chars.length - 1)))
         if (chars[ci] === ' ') continue
