@@ -43,28 +43,66 @@ function toast(msg) {
 }
 
 // ---------- image loading ----------
+// 把已 decode 的位图(ImageBitmap / HTMLImageElement)落到画布
+function mountBitmap(bmp, w, h) {
+  state.img = bmp
+  state.natW = w
+  state.natH = h
+  baseCanvas.width = w
+  baseCanvas.height = h
+  baseCanvas.getContext('2d').drawImage(bmp, 0, 0, w, h)
+  asciiCanvas.width = w
+  asciiCanvas.height = h
+  state.hasAscii = false
+  clearAscii(asciiCanvas)
+  keywords.clearAll()
+  state.region = null
+  regionBox.hidden = true
+  layout()
+  stageEmpty.hidden = true
+  stage.hidden = false
+  toast('照片已载入 ✦ 试试「智能识别关键词」')
+}
+
+// 从 URL（dataURL / blobURL）载入，走 <img>，自动处理 EXIF 朝向
 function loadImage(src) {
   const img = new Image()
-  img.onload = () => {
-    state.img = img
-    state.natW = img.naturalWidth
-    state.natH = img.naturalHeight
-    baseCanvas.width = state.natW
-    baseCanvas.height = state.natH
-    baseCanvas.getContext('2d').drawImage(img, 0, 0)
-    asciiCanvas.width = state.natW
-    asciiCanvas.height = state.natH
-    state.hasAscii = false
-    keywords.clearAll()
-    state.region = null
-    regionBox.hidden = true
-    layout()
-    stageEmpty.hidden = true
-    stage.hidden = false
-    toast('照片已载入 ✦ 试试「智能识别关键词」')
-  }
-  img.onerror = () => toast('图片加载失败')
+  img.decoding = 'async'
+  img.onload = () => mountBitmap(img, img.naturalWidth, img.naturalHeight)
+  img.onerror = () => toast('图片加载失败：该 URL 无法解码')
   img.src = src
+}
+
+// 健壮的 File 载入：识别 HEIC 自动转码，其它格式直接解，错误如实回报
+async function loadFile(file) {
+  if (!file) return
+  const name = (file.name || '').toLowerCase()
+  const isHeic = /image\/heic|image\/heif/.test(file.type) || /\.(heic|heif)$/.test(name)
+  try {
+    if (isHeic) {
+      toast('检测到 HEIC，正在转码…')
+      const heic2any = (await import('heic2any')).default
+      const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+      const jpegBlob = Array.isArray(out) ? out[0] : out
+      loadImage(URL.createObjectURL(jpegBlob))
+      return
+    }
+    // 优先 createImageBitmap（带 EXIF 朝向校正），失败回退 <img>
+    if ('createImageBitmap' in window) {
+      try {
+        const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
+        mountBitmap(bmp, bmp.width, bmp.height)
+        return
+      } catch (_) { /* 回退 */ }
+    }
+    loadImage(URL.createObjectURL(file))
+  } catch (err) {
+    console.error('[vibepic] load failed', err)
+    const hint = isHeic
+      ? 'HEIC 转码失败，请在手机相册导出为 JPG 再传'
+      : `无法读取该图片（${file.type || '未知格式'}）`
+    toast('图片加载失败：' + hint)
+  }
 }
 
 function layout() {
@@ -115,8 +153,8 @@ $('#btn-upload-2').addEventListener('click', pickFile)
 fileInput.addEventListener('change', (e) => {
   const f = e.target.files[0]
   if (!f) return
-  const url = URL.createObjectURL(f)
-  loadImage(url)
+  loadFile(f)
+  e.target.value = '' // 允许重复选同一文件
 })
 $('#btn-sample').addEventListener('click', () => {
   loadImage(makeSample())
@@ -132,7 +170,7 @@ stageWrap.addEventListener('dragover', (e) => { e.preventDefault() })
 stageWrap.addEventListener('drop', (e) => {
   e.preventDefault()
   const f = e.dataTransfer.files[0]
-  if (f && f.type.startsWith('image/')) loadImage(URL.createObjectURL(f))
+  if (f) loadFile(f)  // HEIC 的 type 可能为空，交给 loadFile 按扩展名判断
 })
 
 // 生成一张示例渐变图（无网络依赖）
