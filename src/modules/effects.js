@@ -64,13 +64,14 @@ const TYPES = {
   },
 
   notes: {
-    glyphs: ['♪', '♫', '♩', '♬', '𝄞'],
+    glyphs: ['♪', '♫'],
     make(n) {
       const arr = []
-      for (let i = 0; i < n; i++) arr.push({
-        x: Math.random(), y: rand(0.4, 1.1), v: rand(0.08, 0.2),
-        size: rand(0.03, 0.06), ph: Math.random() * 6.28, sw: rand(0.02, 0.05),
-        g: TYPES.notes.glyphs[(Math.random() * 5) | 0], life: 0,
+      const count = Math.max(4, Math.round(n * 0.45)) // 收一半，别太密
+      for (let i = 0; i < count; i++) arr.push({
+        x: Math.random(), y: rand(0.3, 1.15), v: rand(0.07, 0.12),
+        size: rand(0.032, 0.046), ph: Math.random() * 6.28, sw: rand(0.006, 0.016),
+        g: TYPES.notes.glyphs[(Math.random() * 2) | 0], life: 0,
       })
       return arr
     },
@@ -78,21 +79,22 @@ const TYPES = {
       for (const p of arr) {
         p.y -= p.v * sp * dt
         p.life += dt * sp
-        if (p.y < -0.1) { p.y = 1.1; p.x = Math.random(); p.life = 0 }
+        if (p.y < -0.1) { p.y = 1.12; p.x = Math.random(); p.life = 0 }
       }
     },
     draw(ctx, w, h, arr, color) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       for (const p of arr) {
-        const cx = (p.x + Math.sin(p.life * 3 + p.ph) * p.sw) * w
+        // 轻柔横向摆动 + 极小幅倾斜，不再乱转
+        const cx = (p.x + Math.sin(p.life * 1.4 + p.ph) * p.sw) * w
         const cy = p.y * h
-        const fade = Math.min(1, p.y < 0.15 ? p.y / 0.15 : (p.y > 0.95 ? (1.1 - p.y) / 0.15 : 1))
-        ctx.globalAlpha = 0.92 * fade
+        const fade = Math.min(1, p.y < 0.12 ? p.y / 0.12 : (p.y > 0.92 ? (1.12 - p.y) / 0.2 : 1))
+        ctx.globalAlpha = 0.9 * Math.max(0, fade)
         ctx.fillStyle = color
         ctx.font = `${p.size * w}px 'Space Mono', monospace`
         ctx.save()
         ctx.translate(cx, cy)
-        ctx.rotate(Math.sin(p.life * 2 + p.ph) * 0.25)
+        ctx.rotate(Math.sin(p.life * 1.2 + p.ph) * 0.08)
         ctx.fillText(p.g, 0, 0)
         ctx.restore()
       }
@@ -372,15 +374,16 @@ const TYPES = {
     },
   },
 
-  // 心：自下而上升起 + 摇摆 + 渐隐
+  // 心：自下而上轻柔升起 + 微摆 + 心跳缩放（不混多彩 emoji，跟随主色）
   hearts: {
-    glyphs: ['♥', '❤', '♡', '💗'],
+    glyphs: ['♥', '♡'],
     make(n) {
       const arr = []
-      for (let i = 0; i < n; i++) arr.push({
-        x: Math.random(), y: rand(0.5, 1.2), v: rand(0.07, 0.18),
-        size: rand(0.02, 0.05), sway: rand(0.02, 0.06), ph: Math.random() * 6.28,
-        g: TYPES.hearts.glyphs[(Math.random() * 4) | 0],
+      const count = Math.max(4, Math.round(n * 0.4)) // 收一半多，别太密
+      for (let i = 0; i < count; i++) arr.push({
+        x: Math.random(), y: rand(0.5, 1.2), v: rand(0.06, 0.11),
+        size: rand(0.022, 0.04), sway: rand(0.008, 0.02), ph: Math.random() * 6.28,
+        g: TYPES.hearts.glyphs[(Math.random() * 2) | 0],
       })
       return arr
     },
@@ -393,11 +396,12 @@ const TYPES = {
     draw(ctx, w, h, arr, color) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       for (const p of arr) {
-        const cx = (p.x + Math.sin(p.ph * 1.4) * p.sway) * w
+        const cx = (p.x + Math.sin(p.ph * 0.9) * p.sway) * w
         const fade = p.y > 0.85 ? (1.12 - p.y) / 0.27 : (p.y < 0.1 ? Math.max(0, p.y / 0.1) : 1)
-        ctx.globalAlpha = 0.9 * Math.max(0, Math.min(1, fade))
+        const beat = 1 + Math.sin(p.ph * 3) * 0.05 // 轻微心跳
+        ctx.globalAlpha = 0.88 * Math.max(0, Math.min(1, fade))
         ctx.fillStyle = color
-        ctx.font = `${p.size * w}px ${"'Segoe UI Symbol','Apple Color Emoji',serif"}`
+        ctx.font = `${p.size * w * beat}px ${"'Segoe UI Symbol',serif"}`
         ctx.fillText(p.g, cx, p.y * h)
       }
       ctx.globalAlpha = 1
