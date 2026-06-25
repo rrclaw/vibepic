@@ -283,14 +283,15 @@ const TYPES = {
     },
   },
 
-  // 闪烁星星：原地五角星，明暗呼吸（不下落）
+  // 闪烁星星：原地五角星，明暗呼吸（不下落）。只用白/黄，不彩色
   twinkle: {
+    palette: ['#ffffff', '#fffbe8', '#fff3c2', '#ffe89a', '#ffd96b'],
     make(n) {
       const arr = []
       const count = Math.round(n * 1.4)
       for (let i = 0; i < count; i++) arr.push({
         x: Math.random(), y: Math.random(), size: rand(0.006, 0.02),
-        ph: Math.random() * 6.28, tw: rand(1, 3), col: SPARKLE_COLORS[(Math.random() * SPARKLE_COLORS.length) | 0],
+        ph: Math.random() * 6.28, tw: rand(1, 3), col: TYPES.twinkle.palette[(Math.random() * 5) | 0],
         points: Math.random() < 0.5 ? 4 : 5,
       })
       return arr
