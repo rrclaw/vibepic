@@ -34,14 +34,11 @@ const state = {
   recDur: 5,
   collage: { enabled: false, layout: 'lr', side: 'a', bands: 3, palette: [] },
   glitchImg: { rgb: 0 },   // RGB 分离强度 0..100，作用于照片本身（tmnl 风），烘进 baseCanvas
-  diffuse: { enabled: false, intensity: 55, haze: 35, blobs: 5, palette: 'auto', spots: [], grain: 0, grainSize: 1 },
+  // 弥散 = 图生网格渐变（参考 photogradient.com）：采样原图到 grid → 升采样+模糊成柔滑 mesh，
+  // 按 mix 与原图混合。mix=100 即完全抽象成渐变；grid 越小越抽象、越大越贴近原图。
+  diffuse: { enabled: false, mix: 70, grid: 4, blur: 30, grain: 0, grainSize: 1 },
 }
-
-// 梦幻彩光斑配色（弥散光常用的柔和糖果色）
-const DREAM_COLORS = [
-  { r: 255, g: 173, b: 209 }, { r: 196, g: 181, b: 253 }, { r: 165, g: 216, b: 255 },
-  { r: 167, g: 243, b: 208 }, { r: 255, g: 214, b: 165 }, { r: 253, g: 186, b: 222 },
-]
+const _meshTiny = document.createElement('canvas') // grid 采样小画布（复用）
 
 // 原图离屏画布：永远保存「未拼贴」的原始像素，供识别 / 取色 / 拼贴重组用。
 // baseCanvas 则保存「合成后」用于显示 / ASCII / 导出的画面。
@@ -162,56 +159,29 @@ function applyGrain(ctx, W, H, amt, gs) {
   ctx.putImageData(img, 0, 0)
 }
 
-// 生成弥散光斑（位置铺开、颜色取自画面主色调或梦幻彩）
-function genDiffuseSpots() {
-  const dif = state.diffuse
-  let cols
-  if (dif.palette === 'dream') cols = DREAM_COLORS.slice()
-  else {
-    if (!state.collage.palette.length) state.collage.palette = extractPalette(origCanvas, 6)
-    cols = state.collage.palette.map((c) => ({ r: c.r, g: c.g, b: c.b }))
-    if (!cols.length) cols = DREAM_COLORS.slice()
-  }
-  const spots = []
-  for (let i = 0; i < dif.blobs; i++) {
-    spots.push({ x: _rand(0.05, 0.95), y: _rand(0.05, 0.95), r: _rand(0.32, 0.7), col: _pick(cols) })
-  }
-  dif.spots = spots
-}
-
-// 弥散渐变 + 朦胧柔焦，烘进 baseCanvas
+// 图生网格渐变（mesh gradient）：原图采样到 grid → 升采样 + 高斯模糊成柔滑渐变 → 按 mix 叠回。
+// 颜色完全来自照片本身、且保留空间分布（左上角的色在渐变左上角），所以是「这张图的弥散版」。
 function applyDiffuse(ctx, W, H) {
   const dif = state.diffuse
-  if (!dif.spots.length) genDiffuseSpots()
-  const haze = dif.haze / 100, inten = dif.intensity / 100
+  const mix = Math.max(0, Math.min(1, dif.mix / 100))
+  if (mix <= 0) return
   const big = Math.max(W, H)
-  // 朦胧柔焦：模糊自身叠加 + 轻微提亮去灰
-  if (haze > 0) {
-    ctx.save()
-    ctx.globalAlpha = 0.55 * haze
-    ctx.filter = `blur(${Math.max(1, Math.round(haze * big * 0.012))}px)`
-    ctx.drawImage(baseCanvas, 0, 0, W, H)
-    ctx.restore()
-    ctx.filter = 'none'
-    ctx.save()
-    ctx.globalAlpha = 0.12 * haze
-    ctx.globalCompositeOperation = 'lighten'
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, W, H)
-    ctx.restore()
-  }
-  // 弥散光斑：大半径径向渐变，screen 叠加成柔光晕
+  const cols = Math.max(2, dif.grid | 0)
+  const rows = Math.max(2, Math.round(cols * H / W))
+  // 1) 把原图缩到 grid（每格 = 该区域平均色）
+  _meshTiny.width = cols; _meshTiny.height = rows
+  const tctx = _meshTiny.getContext('2d')
+  tctx.imageSmoothingEnabled = true
+  tctx.clearRect(0, 0, cols, rows)
+  tctx.drawImage(origCanvas, 0, 0, cols, rows)
+  // 2) 升采样回全尺寸 + 模糊 → 柔滑 mesh，按 mix 混合叠在底图上
+  const blurpx = Math.round((dif.blur / 100) * big * 0.03)
+  const pad = blurpx + 1
   ctx.save()
-  ctx.globalCompositeOperation = 'screen'
-  for (const s of dif.spots) {
-    const cx = s.x * W, cy = s.y * H, R = s.r * big
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
-    const c = s.col
-    g.addColorStop(0, `rgba(${c.r | 0},${c.g | 0},${c.b | 0},${(0.55 * inten).toFixed(3)})`)
-    g.addColorStop(1, `rgba(${c.r | 0},${c.g | 0},${c.b | 0},0)`)
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, W, H)
-  }
+  ctx.globalAlpha = mix
+  ctx.imageSmoothingEnabled = true
+  if (blurpx > 0) ctx.filter = `blur(${blurpx}px)`
+  ctx.drawImage(_meshTiny, 0, 0, cols, rows, -pad, -pad, W + 2 * pad, H + 2 * pad)
   ctx.restore()
 }
 
@@ -930,23 +900,11 @@ function diffuseThrottle() {
 }
 seg('#dif-enable', 'dif', (v) => {
   state.diffuse.enabled = v === 'on'
-  if (state.diffuse.enabled && !state.diffuse.spots.length && state.img) genDiffuseSpots()
   applyDiffuse_recompose(state.diffuse.enabled ? '弥散开启 ✦ ASCII 已清，可重新生成' : '弥散关闭')
 })
-seg('#dif-palette', 'dpal', (v) => { state.diffuse.palette = v; if (state.img) genDiffuseSpots(); if (state.diffuse.enabled) applyDiffuse_recompose() })
-$('#dif-intensity').addEventListener('input', (e) => { state.diffuse.intensity = +e.target.value; $('#dif-intensity-val').textContent = e.target.value; diffuseThrottle() })
-$('#dif-haze').addEventListener('input', (e) => { state.diffuse.haze = +e.target.value; $('#dif-haze-val').textContent = e.target.value; diffuseThrottle() })
-$('#dif-blobs').addEventListener('input', (e) => {
-  state.diffuse.blobs = +e.target.value; $('#dif-blobs-val').textContent = e.target.value
-  if (state.img) genDiffuseSpots()
-  diffuseThrottle()
-})
-$('#btn-dif-shuffle').addEventListener('click', () => {
-  if (!state.img) return toast('先上传一张照片')
-  genDiffuseSpots()
-  if (state.diffuse.enabled) applyDiffuse_recompose('换了一组光斑 ✦')
-  else toast('已生成光斑 ✦ 开启弥散看效果')
-})
+$('#dif-mix').addEventListener('input', (e) => { state.diffuse.mix = +e.target.value; $('#dif-mix-val').textContent = e.target.value; diffuseThrottle() })
+$('#dif-grid').addEventListener('input', (e) => { state.diffuse.grid = +e.target.value; $('#dif-grid-val').textContent = e.target.value; diffuseThrottle() })
+$('#dif-blur').addEventListener('input', (e) => { state.diffuse.blur = +e.target.value; $('#dif-blur-val').textContent = e.target.value; diffuseThrottle() })
 // 颗粒/噪点：独立于弥散开关，强度>0 即生效（烘进底图）
 let _grainRaf = 0
 function grainThrottle() {

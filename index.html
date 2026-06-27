@@ -334,7 +334,7 @@
 
       <!-- DIFFUSE 弥散渐变 -->
       <div class="tab-pane" data-pane="diffuse">
-        <p class="hint">弥散渐变 / 朦胧光晕：在画面上叠柔和的大色斑光晕 + 雾化柔焦，做出「弥散光」那种梦幻氛围。颜色默认取自画面主色调。</p>
+        <p class="hint">图生网格渐变（参考 photogradient）：把照片的颜色采样成柔滑的弥散渐变，颜色与位置都来自画面本身。混合越高越抽象，网格越小越梦幻。</p>
         <div class="field">
           <label>弥散效果</label>
           <div class="seg" id="dif-enable">
@@ -343,25 +343,17 @@
           </div>
         </div>
         <div class="field">
-          <label>光晕浓度 <span id="dif-intensity-val">55</span></label>
-          <input id="dif-intensity" type="range" min="0" max="100" value="55" />
+          <label>渐变混合 <span id="dif-mix-val">70</span>（越高越抽象，100=纯渐变）</label>
+          <input id="dif-mix" type="range" min="0" max="100" value="70" />
         </div>
         <div class="field">
-          <label>朦胧柔焦 <span id="dif-haze-val">35</span></label>
-          <input id="dif-haze" type="range" min="0" max="100" value="35" />
+          <label>网格精细 <span id="dif-grid-val">4</span>（越小越梦幻，越大越像原图）</label>
+          <input id="dif-grid" type="range" min="2" max="12" value="4" />
         </div>
         <div class="field">
-          <label>光斑数量 <span id="dif-blobs-val">5</span></label>
-          <input id="dif-blobs" type="range" min="2" max="8" value="5" />
+          <label>柔化模糊 <span id="dif-blur-val">30</span></label>
+          <input id="dif-blur" type="range" min="0" max="100" value="30" />
         </div>
-        <div class="field">
-          <label>配色</label>
-          <div class="seg" id="dif-palette">
-            <button class="seg-btn active" data-dpal="auto">画面取色</button>
-            <button class="seg-btn" data-dpal="dream">梦幻彩</button>
-          </div>
-        </div>
-        <button id="btn-dif-shuffle" class="btn btn-ghost full">↻ 换一组光斑</button>
 
         <div class="section-divider">噪点 · 颗粒</div>
         <p class="hint">叠一层胶片颗粒 / 噪点质感，复古朦胧更耐看。强度 0 = 关闭。</p>
