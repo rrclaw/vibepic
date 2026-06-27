@@ -32,7 +32,7 @@ const state = {
   asciiOpts: { mode: 'highlight', threshold: 0.6, density: 100, charset: 'sparkle', colorMode: 'mono', monoColor: '#ffffff', opacity: 100, bg: 'transparent', scope: 'full' },
   exportScale: 1,
   recDur: 5,
-  collage: { enabled: false, layout: 'lr', side: 'a', bands: 3, palette: [] },
+  collage: { enabled: false, layout: 'lr', side: 'a', bands: 3, palette: [], ratio: 'orig', split: 0.5, zoom: 1 },
   glitchImg: { rgb: 0 },   // RGB 分离强度 0..100，作用于照片本身（tmnl 风），烘进 baseCanvas
   // 弥散 = 图生网格渐变（参考 photogradient.com）：采样原图到 grid → 升采样+模糊成柔滑 mesh，
   // 按 mix 与原图混合。mix=100 即完全抽象成渐变；grid 越小越抽象、越大越贴近原图。
@@ -62,19 +62,15 @@ function toast(msg) {
 // 把已 decode 的位图(ImageBitmap / HTMLImageElement)落到画布
 function mountBitmap(bmp, w, h) {
   state.img = bmp
-  state.natW = w
-  state.natH = h
   // 原图落到离屏 origCanvas
   origCanvas.width = w
   origCanvas.height = h
   origCanvas.getContext('2d').drawImage(bmp, 0, 0, w, h)
-  baseCanvas.width = w
-  baseCanvas.height = h
   // 新图换一套主色调
   state.collage.palette = []
+  // 输出画布尺寸按拼贴页选的比例（默认 = 原图比例）
+  sizeCanvasesToOutput()
   composeBase()
-  asciiCanvas.width = w
-  asciiCanvas.height = h
   state.hasAscii = false
   clearAscii(asciiCanvas)
   keywords.clearAll()
@@ -87,6 +83,30 @@ function mountBitmap(bmp, w, h) {
   autoDesign()
 }
 
+// 输出画布尺寸：拼贴页选的比例（orig=原图比例）。沿用原图长边作基准，控制清晰度。
+const RATIOS = { '1:1': [1, 1], '3:4': [3, 4], '4:5': [4, 5], '9:16': [9, 16], '16:9': [16, 9] }
+function outputDims() {
+  const r = state.collage.ratio
+  const sw = origCanvas.width || 1, sh = origCanvas.height || 1
+  if (r === 'orig' || !RATIOS[r]) return [sw, sh]
+  const [rw, rh] = RATIOS[r]
+  const base = Math.max(sw, sh)
+  return rw >= rh ? [base, Math.round(base * rh / rw)] : [Math.round(base * rw / rh), base]
+}
+function sizeCanvasesToOutput() {
+  const [w, h] = outputDims()
+  state.natW = w; state.natH = h
+  if (baseCanvas.width !== w || baseCanvas.height !== h) { baseCanvas.width = w; baseCanvas.height = h }
+  if (asciiCanvas.width !== w || asciiCanvas.height !== h) { asciiCanvas.width = w; asciiCanvas.height = h }
+}
+// 比例变化 → 重设画布尺寸 + 清 ASCII + 重组 + 重新布局
+function applyCanvasSize() {
+  sizeCanvasesToOutput()
+  clearAscii(asciiCanvas); state.hasAscii = false
+  composeBase()
+  layout()
+}
+
 // 把 origCanvas（原图）合成到 baseCanvas：普通模式直接画原图；拼贴模式切两半。
 function composeBase() {
   const W = state.natW, H = state.natH
@@ -95,22 +115,25 @@ function composeBase() {
   const col = state.collage
   if (!col.enabled) {
     ctx.clearRect(0, 0, W, H)
-    ctx.drawImage(origCanvas, 0, 0, W, H)
+    drawCover(ctx, origCanvas, 0, 0, W, H, col.zoom)
     finishBase(ctx, W, H)
     return
   }
   if (!col.palette.length) col.palette = extractPalette(origCanvas, Math.max(6, col.bands))
   const bands = Math.max(1, Math.min(col.bands, col.palette.length))
-  // 两个矩形：照片半 / 色板半
+  // 两个矩形：照片半占 split，色板半占其余；side 决定照片在哪侧
   const lr = col.layout === 'lr'
   const aFirst = col.side === 'a' // 照片在 左/上
+  const f = Math.max(0.15, Math.min(0.85, col.split))
   let photoR, colorR
   if (lr) {
-    const left = { x: 0, y: 0, w: W / 2, h: H }, right = { x: W / 2, y: 0, w: W / 2, h: H }
-    photoR = aFirst ? left : right; colorR = aFirst ? right : left
+    const pw = W * f
+    photoR = aFirst ? { x: 0, y: 0, w: pw, h: H } : { x: W - pw, y: 0, w: pw, h: H }
+    colorR = aFirst ? { x: pw, y: 0, w: W - pw, h: H } : { x: 0, y: 0, w: W - pw, h: H }
   } else {
-    const top = { x: 0, y: 0, w: W, h: H / 2 }, bottom = { x: 0, y: H / 2, w: W, h: H / 2 }
-    photoR = aFirst ? top : bottom; colorR = aFirst ? bottom : top
+    const ph = H * f
+    photoR = aFirst ? { x: 0, y: 0, w: W, h: ph } : { x: 0, y: H - ph, w: W, h: ph }
+    colorR = aFirst ? { x: 0, y: ph, w: W, h: H - ph } : { x: 0, y: 0, w: W, h: H - ph }
   }
   ctx.clearRect(0, 0, W, H)
   // 色板半：沿长边平铺 N 条主色
@@ -120,12 +143,12 @@ function composeBase() {
     if (lr) ctx.fillRect(colorR.x, colorR.y + (colorR.h / bands) * i, colorR.w, colorR.h / bands + 1)
     else ctx.fillRect(colorR.x + (colorR.w / bands) * i, colorR.y, colorR.w / bands + 1, colorR.h)
   }
-  // 照片半：cover 裁切填满
-  drawCover(ctx, origCanvas, photoR.x, photoR.y, photoR.w, photoR.h)
+  // 照片半：cover 裁切填满（可缩放）
+  drawCover(ctx, origCanvas, photoR.x, photoR.y, photoR.w, photoR.h, col.zoom)
   // 接缝细分隔线
   ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  if (lr) ctx.fillRect(W / 2 - 1, 0, 2, H)
-  else ctx.fillRect(0, H / 2 - 1, W, 2)
+  if (lr) { const sx = photoR.x === 0 ? photoR.w : photoR.x; ctx.fillRect(sx - 1, 0, 2, H) }
+  else { const sy = photoR.y === 0 ? photoR.h : photoR.y; ctx.fillRect(0, sy - 1, W, 2) }
   finishBase(ctx, W, H)
 }
 
@@ -204,12 +227,14 @@ function applyRgbSplit(ctx, W, H, dx) {
   ctx.putImageData(img, 0, 0)
 }
 
-function drawCover(ctx, img, dx, dy, dw, dh) {
+function drawCover(ctx, img, dx, dy, dw, dh, zoom = 1) {
   const iw = img.width, ih = img.height
   const rr = dw / dh, ir = iw / ih
-  let sw, sh, sx, sy
-  if (ir > rr) { sh = ih; sw = sh * rr; sx = (iw - sw) / 2; sy = 0 }
-  else { sw = iw; sh = sw / rr; sx = 0; sy = (ih - sh) / 2 }
+  let sw, sh
+  if (ir > rr) { sh = ih; sw = sh * rr } else { sw = iw; sh = sw / rr }
+  const z = Math.max(1, zoom || 1)
+  sw /= z; sh /= z
+  const sx = (iw - sw) / 2, sy = (ih - sh) / 2
   ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
 }
 
@@ -850,6 +875,22 @@ $('#col-bands').addEventListener('input', (e) => {
   if (state.collage.enabled) applyCollage()
   else renderSwatches()
 })
+// 画布比例：改输出尺寸/形状（重设画布 + 重组 + 重新布局），照片自动 cover 适配
+seg('#col-ratio', 'ratio', (v) => {
+  state.collage.ratio = v
+  if (!state.img) return
+  applyCanvasSize()
+  renderSwatches()
+  toast(v === 'orig' ? '画布回到原图比例' : `画布改为 ${v}`)
+})
+// 图片占比 / 照片缩放：只重组底图（画布尺寸不变），节流
+let _colRaf = 0
+function collageThrottle() {
+  if (!state.img || _colRaf) return
+  _colRaf = requestAnimationFrame(() => { _colRaf = 0; composeBase(); if (state.hasAscii) { clearAscii(asciiCanvas); state.hasAscii = false } })
+}
+$('#col-split').addEventListener('input', (e) => { state.collage.split = +e.target.value / 100; $('#col-split-val').textContent = e.target.value; collageThrottle() })
+$('#col-zoom').addEventListener('input', (e) => { state.collage.zoom = +e.target.value / 100; $('#col-zoom-val').textContent = e.target.value; collageThrottle() })
 let _recolorJit = 0
 $('#btn-col-recolor').addEventListener('click', () => {
   if (!state.img) return toast('先上传一张照片')

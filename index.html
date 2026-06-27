@@ -381,6 +381,25 @@
           </div>
         </div>
         <div class="field">
+          <label>画布比例（整张图的尺寸 / 形状）</label>
+          <div class="seg" id="col-ratio">
+            <button class="seg-btn active" data-ratio="orig">原图</button>
+            <button class="seg-btn" data-ratio="1:1">1:1</button>
+            <button class="seg-btn" data-ratio="4:5">4:5</button>
+            <button class="seg-btn" data-ratio="3:4">3:4</button>
+            <button class="seg-btn" data-ratio="9:16">9:16</button>
+            <button class="seg-btn" data-ratio="16:9">16:9</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>图片占比 <span id="col-split-val">50</span>%（照片半占多大）</label>
+          <input id="col-split" type="range" min="15" max="85" value="50" />
+        </div>
+        <div class="field">
+          <label>照片缩放 <span id="col-zoom-val">100</span>%（在面板里放大裁切）</label>
+          <input id="col-zoom" type="range" min="100" max="260" value="100" />
+        </div>
+        <div class="field">
           <label>切分方向</label>
           <div class="seg" id="col-layout">
             <button class="seg-btn active" data-layout="lr">左右</button>
