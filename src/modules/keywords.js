@@ -1,8 +1,10 @@
 // 关键词标注：COCO-SSD 识别 → 氛围词；DOM 标签可拖动/改字/删除；导出时按归一化坐标重绘。
-import { wordForDetection, ambientWords, colorVibes, resetUsed } from './vibeWords.js'
+import { ambientWords, resetUsed, pickWord, contentWords, colorWords, moodWord, THEME_POOLS } from './vibeWords.js'
 
 let cocoModel = null
 let modelLoading = null
+let mobilenetModel = null
+let mnLoading = null
 
 async function loadModel(onProgress) {
   if (cocoModel) return cocoModel
@@ -11,11 +13,24 @@ async function loadModel(onProgress) {
     onProgress?.('加载识别模型…（首次约几 MB）')
     await import('@tensorflow/tfjs')
     const cocoSsd = await import('@tensorflow-models/coco-ssd')
-    onProgress?.('初始化模型…')
     cocoModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' })
     return cocoModel
   })()
   return modelLoading
+}
+
+// MobileNet 1000 类图像分类器：给「画面是什么」的内容词（ice cream / seashore / daisy…）
+async function loadMobilenet(onProgress) {
+  if (mobilenetModel) return mobilenetModel
+  if (mnLoading) return mnLoading
+  mnLoading = (async () => {
+    onProgress?.('加载内容识别模型…（首次约几 MB）')
+    await import('@tensorflow/tfjs')
+    const mobilenet = await import('@tensorflow-models/mobilenet')
+    mobilenetModel = await mobilenet.load({ version: 2, alpha: 1.0 })
+    return mobilenetModel
+  })()
+  return mnLoading
 }
 
 export class Keywords {
@@ -24,6 +39,7 @@ export class Keywords {
     this.labels = []
     this.selected = null
     this.idc = 0
+    this.lastClasses = []   // 最近一次识别到的物体类别，供「自动联想形状」用
     this.style = { font: 'mono', bracket: 'round', size: 28, color: '#ffffff' }
     this._bindLayer()
   }
@@ -147,66 +163,70 @@ export class Keywords {
     this.selected = null
   }
 
-  // 识别并标注
+  // 识别并标注。关键词来源优先级：画面内容(MobileNet 1000 类) > 人物 > 画面颜色 > 氛围。
   async detect(baseCanvas, theme, onStatus) {
     resetUsed()
-    const model = await loadModel(onStatus)
-    onStatus?.('识别中…')
-    const preds = await model.detect(baseCanvas, 20, 0.45)
+    onStatus?.('识别画面内容…')
 
-    // 取平均色推断氛围词池
-    const colorPool = colorVibes(avgColor(baseCanvas))
+    // 并行跑 内容分类(MobileNet) + 物体检测(COCO，给文字落点)；任一失败都不致命
+    let preds = [], classes = []
+    try {
+      const [coco, mn] = await Promise.all([loadModel(onStatus), loadMobilenet(onStatus)])
+      onStatus?.('识别中…')
+      const out = await Promise.all([coco.detect(baseCanvas, 20, 0.4), mn.classify(baseCanvas, 6)])
+      preds = out[0] || []; classes = out[1] || []
+    } catch (e) {
+      console.warn('[vibepic] 双模型识别失败，尝试仅 COCO', e)
+      try { const coco = await loadModel(onStatus); preds = await coco.detect(baseCanvas, 20, 0.4) } catch (_) {}
+    }
+    this.lastClasses = preds.map((p) => p.class)
+
+    const avg = avgColor(baseCanvas)
+    // 候选词，按优先级排序、去重
+    const ordered = []
+    const push = (w) => { if (w && !ordered.includes(w)) ordered.push(w) }
+    contentWords(classes, 6).forEach(push)                 // 1) 真正按画面的内容词
+    if (preds.some((p) => p.class === 'person')) push(pickWord(['girl', 'you', 'her', 'us', 'soul'], 0)) // 2) 人物
+    colorWords(avg).slice(0, 3).forEach(push)              // 3) 画面颜色词
+    push(moodWord(avg))                                    // 4) 一个氛围词
+    // 用户在下拉里选了具体主题 → 末尾补两个主题词
+    if (theme && theme !== 'auto' && THEME_POOLS[theme]) THEME_POOLS[theme].slice(0, 3).forEach(push)
+    // 兜底：还不足就补氛围词（最后手段）
+    if (ordered.length < 6) ambientWords(theme, [], 8).forEach(push)
 
     const W = baseCanvas.width, H = baseCanvas.height
+    const target = Math.max(6, Math.min(9, ordered.length))
     const placed = []
-    let idx = 0
+    let wi = 0
+
+    // 先把前几个词放到检测框上（贴着画面主体）
     for (const p of preds) {
-      const [x, y, w, h] = p.bbox
-      const word = wordForDetection(p.class, theme, colorPool, idx++)
-      if (!word) continue
-      // 放在框的上方居中，避开太靠边
-      let cx = (x + w / 2) / W
-      let cy = (y) / H - 0.02
-      cx = Math.max(0.06, Math.min(0.94, cx))
-      cy = Math.max(0.05, Math.min(0.95, cy))
-      // 简单避让已放置的
-      for (const q of placed) {
-        if (Math.abs(q.xN - cx) < 0.1 && Math.abs(q.yN - cy) < 0.06) cy += 0.08
+      if (wi >= ordered.length || placed.length >= target) break
+      const [x, y, w] = p.bbox
+      let cx = (x + w / 2) / W, cy = y / H - 0.02
+      cx = Math.max(0.08, Math.min(0.92, cx)); cy = Math.max(0.06, Math.min(0.92, cy))
+      for (const q of placed) if (Math.abs(q.xN - cx) < 0.1 && Math.abs(q.yN - cy) < 0.06) cy += 0.08
+      placed.push(this.add(ordered[wi++], cx, Math.min(0.93, cy)))
+    }
+    // 其余散点铺开
+    const grid = [
+      [0.16, 0.16], [0.5, 0.12], [0.84, 0.17], [0.12, 0.42], [0.88, 0.4],
+      [0.2, 0.7], [0.5, 0.8], [0.8, 0.72], [0.34, 0.5], [0.66, 0.52], [0.5, 0.32],
+    ]
+    let gi = 0
+    while (placed.length < target && wi < ordered.length) {
+      let spot = null
+      for (let t = 0; t < grid.length; t++) {
+        const c = grid[(gi++) % grid.length]
+        if (!placed.some((q) => Math.abs(q.xN - c[0]) < 0.12 && Math.abs(q.yN - c[1]) < 0.07)) { spot = c; break }
       }
-      const lab = this.add(word, cx, Math.min(0.95, cy))
-      placed.push(lab)
+      if (!spot) spot = grid[(gi++) % grid.length]
+      placed.push(this.add(ordered[wi++], spot[0], spot[1]))
     }
 
-    // 关键：识别词通常很少（一张人像可能只认出 person→us）。
-    // 参考图里大部分是「撒上去」的氛围词，所以无论识别到几个，都补到 6~9 个。
-    const target = 7 + ((W + H) % 3)  // 7~9，按图尺寸稳定
-    const need = Math.max(0, target - placed.length)
-    if (need > 0) {
-      const words = ambientWords(theme, colorPool, need + 2)
-      // 候选撒点（分散在画面），避开已放置的
-      const grid = [
-        [0.16, 0.16], [0.5, 0.12], [0.84, 0.17], [0.12, 0.42], [0.88, 0.4],
-        [0.2, 0.7], [0.5, 0.8], [0.8, 0.72], [0.34, 0.5], [0.66, 0.52], [0.5, 0.32],
-      ]
-      let gi = 0
-      for (const w of words) {
-        if (placed.length >= target) break
-        // 找一个不和已有标签太近的点
-        let spot = null
-        for (let tries = 0; tries < grid.length; tries++) {
-          const cand = grid[(gi++) % grid.length]
-          const clash = placed.some((q) => Math.abs(q.xN - cand[0]) < 0.12 && Math.abs(q.yN - cand[1]) < 0.07)
-          if (!clash) { spot = cand; break }
-        }
-        if (!spot) spot = grid[(gi++) % grid.length]
-        placed.push(this.add(w, spot[0], spot[1]))
-      }
-    }
-
-    const detected = preds.length
-    onStatus?.(detected > 0
-      ? `识别到 ${detected} 处 + 补了氛围词，共 ${placed.length} 个 ✦ 可拖动/改字/删除`
-      : `未识别到明确物体，撒了 ${placed.length} 个氛围词 ✦`)
+    onStatus?.(classes.length
+      ? `按画面内容撒了 ${placed.length} 个关键词 ✦ 可拖动/改字/删除`
+      : `撒了 ${placed.length} 个关键词 ✦ 可拖动/改字/删除`)
     return placed.length
   }
 

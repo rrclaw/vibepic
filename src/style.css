@@ -176,6 +176,28 @@ input[type=color] { width: 44px; height: 36px; border: 1px solid var(--line); bo
 .glyph-grid button:hover { background: var(--cream-2); border-color: var(--accent); }
 .region-edit { padding: 12px; background: var(--cream); border: 1px solid var(--line); border-radius: 11px; }
 
+/* ---------- Combo builder（形状 × 动效） ---------- */
+.combo-builder { margin: 14px 0; padding: 12px; background: var(--cream); border: 1px solid var(--line); border-radius: 12px; }
+.combo-title { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.combo-hint { font-size: 11px; color: var(--ink-soft); line-height: 1.5; margin: 0 0 10px; }
+.combo-builder select { flex: 1; }
+.combo-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.combo-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 12px;
+}
+.combo-item .ci-label { flex: 1; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-item .ci-btn { border: none; background: none; cursor: pointer; font-size: 13px; color: var(--ink-soft); padding: 2px 4px; }
+.combo-item .ci-btn:hover { color: var(--accent); }
+.combo-item .ci-del:hover { color: #c0392b; }
+
+/* ---------- Collage swatches ---------- */
+.col-swatches { display: flex; gap: 6px; flex-wrap: wrap; min-height: 30px; }
+.col-swatches .sw {
+  width: 30px; height: 30px; border-radius: 7px; border: 1px solid rgba(0,0,0,0.12);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+}
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

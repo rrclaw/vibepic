@@ -45,6 +45,43 @@ export function exportPNG({ base, ascii, hasAscii, effects, doodles, labels, fon
   return new Promise((res) => c.toBlob((b) => res(b), 'image/png'))
 }
 
+// 导出 SVG（矢量）：照片 + ASCII + 当前帧动效/装饰合成成一张位图嵌进 <image>，
+// 关键词文字则输出成真正的 <text>（任意缩放清晰、可在 Figma/AI 里再编辑）。
+function svgFontFamily(font) {
+  switch (font) {
+    case 'sans': return "Inter, sans-serif"
+    case 'serif': return "'DM Serif Display', serif"
+    case 'script': return "Caveat, cursive"
+    default: return "'Space Mono', monospace"
+  }
+}
+const xmlEsc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]))
+
+export function exportSVG({ base, ascii, hasAscii, effects, doodles, labels, fontScale, scale }) {
+  const tW = Math.round(base.width * scale)
+  const tH = Math.round(base.height * scale)
+  const c = document.createElement('canvas')
+  c.width = tW; c.height = tH
+  const ctx = c.getContext('2d')
+  drawBackground(ctx, base, ascii, hasAscii, tW, tH)
+  if (effects && !effects.isEmpty) effects.draw(ctx, tW, tH)
+  if (doodles && !doodles.isEmpty) doodles.draw(ctx, tW, tH)
+  const dataUrl = c.toDataURL('image/png')
+  const lblScale = fontScale * scale
+  const texts = labels.map((l) => {
+    const px = (l.size * lblScale).toFixed(1)
+    const x = (l.xN * tW).toFixed(1), y = (l.yN * tH).toFixed(1)
+    const weight = l.font === 'sans' ? ' font-weight="600"' : (l.font === 'script' ? ' font-weight="700"' : '')
+    return `  <text x="${x}" y="${y}" font-family="${svgFontFamily(l.font)}" font-size="${px}"${weight} fill="${l.color}" text-anchor="middle" dominant-baseline="central" style="paint-order:stroke;stroke:rgba(0,0,0,0.4);stroke-width:${(px * 0.04).toFixed(2)}px">${xmlEsc(l.text)}</text>`
+  }).join('\n')
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${tW}" height="${tH}" viewBox="0 0 ${tW} ${tH}">
+  <image width="${tW}" height="${tH}" xlink:href="${dataUrl}"/>
+${texts}
+</svg>`
+  return new Blob([svg], { type: 'image/svg+xml' })
+}
+
 // 录制 WebM
 export function exportWebM({ base, ascii, hasAscii, effects, doodles, labels, fontScale, scale, duration, onTick }) {
   return new Promise((resolve, reject) => {

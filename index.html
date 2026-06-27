@@ -14,8 +14,9 @@
     <div class="brand-sub">ASCII 网点 · 关键词标注 · 氛围动效</div>
     <div class="topbar-actions">
       <button id="btn-upload" class="btn btn-ghost">上传照片</button>
+      <button id="btn-random" class="btn btn-ghost">🎲 随机图</button>
+      <button id="btn-unsplash-key" class="btn btn-ghost" title="设置精选图源（免费 Unsplash key）">🔑</button>
       <button id="btn-auto" class="btn btn-solid">✨ 一键设计</button>
-      <button id="btn-sample" class="btn btn-ghost">示例图</button>
       <button id="btn-reset" class="btn btn-ghost">清空</button>
     </div>
   </header>
@@ -26,8 +27,11 @@
       <div class="stage-empty" id="stage-empty">
         <div class="drop-hint">
           <div class="drop-icon">⌁</div>
-          <p>拖入或上传一张照片开始</p>
-          <button id="btn-upload-2" class="btn btn-solid">选择照片</button>
+          <p>拖入或上传一张照片开始，或随手来一张</p>
+          <div class="row" style="justify-content:center">
+            <button id="btn-upload-2" class="btn btn-solid">选择照片</button>
+            <button id="btn-random-2" class="btn btn-ghost">🎲 随机一张</button>
+          </div>
         </div>
       </div>
       <div class="stage" id="stage" hidden>
@@ -46,6 +50,8 @@
         <button class="tab" data-tab="ascii">ASCII</button>
         <button class="tab" data-tab="effects">动效</button>
         <button class="tab" data-tab="doodle">装饰</button>
+        <button class="tab" data-tab="glitch">故障</button>
+        <button class="tab" data-tab="collage">拼贴</button>
         <button class="tab" data-tab="export">导出</button>
       </nav>
 
@@ -108,6 +114,7 @@
           <div class="seg" id="ascii-mode">
             <button class="seg-btn active" data-mode="highlight">高光网点</button>
             <button class="seg-btn" data-mode="fill">填充</button>
+            <button class="seg-btn" data-mode="halftone">半调网点</button>
           </div>
         </div>
         <div class="field" id="ascii-thr-field">
@@ -133,6 +140,9 @@
             <option value="sparkle">散点星花 &gt; + * ✳ #</option>
             <option value="star">星花朵 * ✦ ✳ ❋ ❀</option>
             <option value="arrows">箭点 · &gt; » * #（最像图7）</option>
+            <option value="digits">数字 0 1 2 &amp; / @</option>
+            <option value="matrix">数据点 2 e / = + *（青色参考图）</option>
+            <option value="glitch">故障代码 0 1 x # % &amp; @</option>
             <option value="hash">符号 + * # % @</option>
             <option value="blocks">实心网点 ░▒▓█</option>
             <option value="dots">⠁⠉⠛⣿ 盲文点阵</option>
@@ -168,16 +178,31 @@
         <div class="fx-grid" id="fx-grid">
           <button class="fx-card" data-fx="rain"><span>🌧</span>ascii 雨滴</button>
           <button class="fx-card" data-fx="notes"><span>♪</span>跳动音符</button>
-          <button class="fx-card" data-fx="bloom"><span>❀</span>花朵绽放</button>
           <button class="fx-card" data-fx="waves"><span>≈</span>浪花滚动</button>
           <button class="fx-card" data-fx="sparkle"><span>✦</span>星星点点</button>
-          <button class="fx-card" data-fx="petals"><span>🌸</span>花瓣飘落</button>
           <button class="fx-card" data-fx="fireworks"><span>🎆</span>烟花</button>
           <button class="fx-card" data-fx="twinkle"><span>★</span>闪烁星星</button>
           <button class="fx-card" data-fx="snow"><span>❄</span>雪花</button>
-          <button class="fx-card" data-fx="clover"><span>🍀</span>四叶草</button>
           <button class="fx-card" data-fx="hearts"><span>♥</span>心</button>
         </div>
+
+        <div class="combo-builder">
+          <label class="combo-title">✦ 形状 × 动效 自由组合</label>
+          <p class="combo-hint">挑一个形状 + 一种动效，组合成一层。「自动」会按画面内容联想形状（云朵/冰淇淋…），也能贴自定义 emoji。</p>
+          <div class="row">
+            <select id="combo-shape"></select>
+            <select id="combo-motion"></select>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="combo-custom" type="text" placeholder="自定义形状：贴一个 emoji（可留空）" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="btn-combo-random" class="btn btn-ghost" style="flex:1">🎲 随机组合</button>
+            <button id="btn-combo-add" class="btn btn-solid" style="flex:1">+ 添加这层</button>
+          </div>
+          <div id="combo-list" class="combo-list"></div>
+        </div>
+
         <div class="field region-edit" id="fx-region-edit" hidden>
           <label>动效范围（只让选中的动效在这块区域里播）</label>
           <select id="fx-region-target"></select>
@@ -273,10 +298,78 @@
         <div class="status" id="dd-status">提示：点画面上的装饰可选中，再拖动 / 改大小 / 删除。</div>
       </div>
 
+      <!-- GLITCH 像素故障 -->
+      <div class="tab-pane" data-pane="glitch">
+        <p class="hint">像素故障 / 千禧梦核风。四种故障元素可叠加，自动跳位 + 闪烁，导出视频/GIF 录得到动态。每种都能单独框范围（去「动效」tab 设）。</p>
+        <div class="fx-grid" id="glitch-grid">
+          <button class="fx-card" data-glitch="glitchBars"><span>▬</span>霓虹色条</button>
+          <button class="fx-card" data-glitch="glitchBlocks"><span>▪</span>错位方块</button>
+          <button class="fx-card" data-glitch="glitchMosaic"><span>▦</span>像素马赛克</button>
+          <button class="fx-card" data-glitch="glitchScan"><span>▤</span>扫描线</button>
+          <button class="fx-card" data-glitch="glitchCode"><span>⌗</span>代码乱码</button>
+        </div>
+        <div class="field">
+          <label>像素马赛克配色</label>
+          <div class="seg" id="glitch-mosaic-color">
+            <button class="seg-btn active" data-mcol="neon">霓虹纯色</button>
+            <button class="seg-btn" data-mcol="sampled">图片取色</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>RGB 分离（作用于照片本身，tmnl 风）<span id="glitch-rgb-val">0</span></label>
+          <input id="glitch-rgb" type="range" min="0" max="100" value="0" />
+        </div>
+        <div class="field">
+          <label>强度 <span id="glitch-amount-val">50</span></label>
+          <input id="glitch-amount" type="range" min="10" max="100" value="50" />
+        </div>
+        <div class="field">
+          <label>速度 <span id="glitch-speed-val">100</span>%</label>
+          <input id="glitch-speed" type="range" min="20" max="200" value="100" />
+        </div>
+        <button id="btn-glitch-clear" class="btn btn-ghost full">关闭所有故障</button>
+      </div>
+
+      <!-- COLLAGE 拼贴 -->
+      <div class="tab-pane" data-pane="collage">
+        <p class="hint">横版照片更适合：把画面切成两半，一半是原图，一半是从图里提取的主色调色板。ASCII / 动效 / 文字都跨越整张图，自然把两半串在一起。</p>
+        <div class="field">
+          <label>拼贴效果</label>
+          <div class="seg" id="col-enable">
+            <button class="seg-btn active" data-col="off">关闭</button>
+            <button class="seg-btn" data-col="on">开启</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>切分方向</label>
+          <div class="seg" id="col-layout">
+            <button class="seg-btn active" data-layout="lr">左右</button>
+            <button class="seg-btn" data-layout="tb">上下</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>照片放在</label>
+          <div class="seg" id="col-side">
+            <button class="seg-btn active" data-side="a">左 / 上</button>
+            <button class="seg-btn" data-side="b">右 / 下</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>色板条数 <span id="col-bands-val">3</span></label>
+          <input id="col-bands" type="range" min="1" max="6" value="3" />
+        </div>
+        <div class="field">
+          <label>提取到的主色调</label>
+          <div id="col-swatches" class="col-swatches"></div>
+        </div>
+        <button id="btn-col-recolor" class="btn btn-ghost full">↻ 重新取色 / 换配色</button>
+      </div>
+
       <!-- EXPORT -->
       <div class="tab-pane" data-pane="export">
         <p class="hint">PNG = 当前画面静图；视频/GIF = 录制带动效的动画。GIF 到处自动播但 256 色、文件较大；视频更清晰（优先 MP4）。</p>
         <button id="btn-export-png" class="btn btn-solid full">⬇ 导出 PNG</button>
+        <button id="btn-export-svg" class="btn btn-ghost full">⬇ 导出 SVG（位图底 + 矢量文字）</button>
         <div class="field">
           <label>录制时长 <span id="rec-dur-val">5</span> 秒</label>
           <input id="rec-dur" type="range" min="2" max="12" value="5" />

@@ -9,6 +9,9 @@ const CHARSETS = {
   star: [' ', '*', '✦', '✳', '❋', '❀'],             // 星花朵
   hash: [' ', '+', '*', '#', '%', '@'],
   arrows: [' ', '·', '>', '»', '*', '#'],            // 含少量点，更像图7
+  digits: [' ', '0', '1', '2', '&', '/', '@'],       // 数字符号 012&/@
+  matrix: [' ', '·', '2', 'e', '/', '=', '+', '*'],  // 青色数据点（参考图）
+  glitch: [' ', '0', '1', 'x', '#', '%', '&', '@'],  // 故障代码感
   blocks: ' ░▒▓█',
   dots: ' ⠁⠉⠋⠛⠟⠿⡿⣿',
   code: ' .,:;|/\\(){}#',
@@ -44,6 +47,32 @@ export function renderAscii(sourceCanvas, asciiCanvas, opts) {
   }
 
   ctx.globalAlpha = (opts.opacity ?? 100) / 100
+
+  // 半调网点（halftone）：规则网格，每格一个圆点，半径随亮度变化（亮处大、暗处小），
+  // 覆盖整图成「点屏」。不画字符，直接退出。
+  if (mode === 'halftone') {
+    const maxR = cell * 0.5
+    for (let ry = 0; ry < rows; ry++) {
+      for (let rx = 0; rx < cols; rx++) {
+        const lum = cellLuma(data, iw, img.height, rx, ry, cell)
+        if (lum < 0) continue
+        const radius = maxR * (0.18 + Math.pow(lum.l, 0.85) * 0.82)
+        if (radius < 0.4) continue
+        if (opts.colorMode === 'sampled') {
+          const boost = 1.12
+          ctx.fillStyle = `rgb(${Math.min(255, lum.r * boost) | 0},${Math.min(255, lum.g * boost) | 0},${Math.min(255, lum.b * boost) | 0})`
+        } else {
+          ctx.fillStyle = opts.monoColor || '#ffffff'
+        }
+        ctx.beginPath()
+        ctx.arc(region.x + (rx + 0.5) * cell, region.y + (ry + 0.5) * cell, radius, 0, 6.2832)
+        ctx.fill()
+      }
+    }
+    ctx.globalAlpha = 1
+    return
+  }
+
   const fontPx = cell * (mode === 'highlight' ? 1.05 : 1.15)
   ctx.font = `${fontPx}px 'Space Mono', monospace`
   ctx.textBaseline = 'middle'

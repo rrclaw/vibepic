@@ -1,6 +1,9 @@
 // 动效图层。所有粒子用归一化坐标 [0..1]，draw(ctx,w,h) 时缩放到任意分辨率，
 // 这样预览（屏幕尺寸）和导出（自然分辨率）共用同一套状态。
-// 支持多种动效同时叠加。
+// 支持多种预设动效叠加，也支持「形状 × 动效」自由组合层（combo:*）。
+
+import { MOTIONS } from './motions.js'
+import { shapeDrawer, shapeSpecLabel } from './shapes.js'
 
 const rand = (a, b) => a + Math.random() * (b - a)
 const SPARKLE_COLORS = ['#ff9ec4', '#ffd56b', '#9be8a0', '#8cd6ff', '#c79bff', '#ff8f6b', '#7fe3ff']
@@ -408,6 +411,192 @@ const TYPES = {
       ctx.globalAlpha = 1
     },
   },
+
+  // 故障·霓虹色条：水平霓虹长条，跳位 + 闪烁 + RGB 错位描边（假色散）
+  glitchBars: {
+    make(n) {
+      const c = Math.max(5, Math.round(n * 0.3))
+      const bars = []
+      for (let i = 0; i < c; i++) bars.push(glitchBar())
+      return { bars }
+    },
+    update(st, dt, sp) {
+      for (const b of st.bars) {
+        b.timer -= dt * sp
+        if (b.timer <= 0) glitchReseatBar(b)
+        if (b.flick) b.vis = Math.random() > 0.28
+      }
+    },
+    draw(ctx, w, h, st) {
+      for (const b of st.bars) {
+        if (!b.vis) continue
+        const bx = b.x * w, by = b.y * h, bw = b.w * w, bh = Math.max(1, b.h * h)
+        if (b.rgb) {
+          const off = Math.max(1, bh * 0.5)
+          ctx.globalAlpha = 0.5
+          ctx.fillStyle = '#ff003c'; ctx.fillRect(bx - off, by, bw, bh)
+          ctx.fillStyle = '#00fff0'; ctx.fillRect(bx + off, by, bw, bh)
+        }
+        ctx.globalAlpha = b.alpha
+        ctx.fillStyle = b.col
+        ctx.fillRect(bx, by, bw, bh)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·错位方块：散落的小色块，跳位 + 闪烁
+  glitchBlocks: {
+    make(n) {
+      const c = Math.max(8, Math.round(n * 0.6))
+      const blocks = []
+      for (let i = 0; i < c; i++) blocks.push(glitchBlock())
+      return { blocks }
+    },
+    update(st, dt, sp) {
+      for (const k of st.blocks) {
+        k.timer -= dt * sp
+        if (k.timer <= 0) glitchReseatBlock(k)
+        if (k.flick) k.vis = Math.random() > 0.35
+      }
+    },
+    draw(ctx, w, h, st) {
+      for (const k of st.blocks) {
+        if (!k.vis) continue
+        ctx.globalAlpha = k.alpha
+        ctx.fillStyle = k.col
+        ctx.fillRect(k.x * w, k.y * h, k.w * w, k.h * h)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·像素马赛克：对齐网格的大方块成片刷新（千禧梦核那种块状像素化）
+  glitchMosaic: {
+    make(n) {
+      const c = Math.max(10, Math.round(n * 0.7))
+      const tiles = []
+      for (let i = 0; i < c; i++) tiles.push(glitchTile())
+      return { tiles }
+    },
+    update(st, dt, sp) {
+      for (const t of st.tiles) {
+        t.timer -= dt * sp
+        if (t.timer <= 0) glitchReseatTile(t)
+        if (t.flick) t.vis = Math.random() > 0.3
+      }
+    },
+    draw(ctx, w, h, st, color, fx, reg) {
+      const r = reg || { x: 0, y: 0, w: 1, h: 1 }
+      const sampled = fx && fx.glitchSampled
+      for (const t of st.tiles) {
+        if (!t.vis) continue
+        // 网格对齐 → 块状
+        const g = t.size
+        const gxN = Math.round(t.x / g) * g, gyN = Math.round(t.y / g) * g
+        const gx = gxN * w, gy = gyN * h
+        ctx.globalAlpha = t.alpha
+        // 纯色(霓虹) 或 从图片取色（按方块在整图中的绝对位置采样）
+        ctx.fillStyle = sampled ? fx.sampleColor(r.x + (gxN + g / 2) * r.w, r.y + (gyN + g / 2) * r.h) : t.col
+        ctx.fillRect(gx, gy, g * w + 1, g * h + 1)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·代码乱码：终端风等宽字符乱码层，逐字闪烁/变形（参考 tmnl 终端美学）
+  glitchCode: {
+    palette: ['#39ff14', '#00e5ff', '#caffd9', '#7CFC00'],
+    chars: '0123456789ABCDEF<>/\\=*+#%&$@xY▮░'.split(''),
+    make(n) {
+      const c = Math.max(14, Math.round(n * 1.3))
+      const arr = []
+      for (let i = 0; i < c; i++) arr.push(glitchCodeCell())
+      return { cells: arr }
+    },
+    update(st, dt, sp) {
+      for (const c of st.cells) {
+        c.timer -= dt * sp
+        if (c.timer <= 0) glitchCodeReseat(c)
+        if (c.flick) c.vis = Math.random() > 0.3
+      }
+    },
+    draw(ctx, w, h, st) {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      for (const c of st.cells) {
+        if (!c.vis) continue
+        ctx.globalAlpha = c.alpha
+        ctx.fillStyle = c.col
+        ctx.font = `${c.s * w}px 'Space Mono', monospace`
+        ctx.fillText(c.str, c.x * w, c.y * h)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·扫描线：暗横线 + 移动亮带 + 偶发整行 RGB 撕裂
+  glitchScan: {
+    make() { return { scan: Math.random(), scanV: rand(0.18, 0.5), tear: -1, tearT: rand(0.3, 1.2) } },
+    update(st, dt, sp) {
+      st.scan += st.scanV * dt * sp
+      if (st.scan > 1.12) st.scan = -0.12
+      st.tearT -= dt * sp
+      if (st.tearT <= 0) { st.tear = Math.random(); st.tearT = rand(0.3, 1.4) }
+    },
+    draw(ctx, w, h, st) {
+      ctx.globalAlpha = 0.12
+      ctx.fillStyle = '#000'
+      for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1)
+      ctx.globalAlpha = 0.07
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, st.scan * h, w, h * 0.05)
+      if (st.tear >= 0) {
+        const ty = st.tear * h, th = Math.max(2, h * 0.012)
+        ctx.globalAlpha = 0.55
+        ctx.fillStyle = '#ff003c'; ctx.fillRect(-w * 0.02, ty, w, th)
+        ctx.fillStyle = '#00fff0'; ctx.fillRect(w * 0.02, ty + th, w, th)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+}
+
+const GLITCH_PALETTE = ['#39ff14', '#1f4cff', '#ff00d4', '#8a2be2', '#ffffff', '#00e5ff']
+const gpick = () => GLITCH_PALETTE[(Math.random() * GLITCH_PALETTE.length) | 0]
+function glitchBar() { const b = {}; glitchReseatBar(b); b.timer = Math.random() * 0.6; return b }
+function glitchReseatBar(b) {
+  b.y = rand(0, 1); b.x = rand(-0.12, 0.55); b.w = rand(0.22, 0.95); b.h = rand(0.008, 0.055)
+  b.col = gpick(); b.alpha = rand(0.65, 0.95); b.rgb = Math.random() < 0.55
+  b.flick = Math.random() < 0.4; b.vis = true; b.timer = rand(0.12, 0.9)
+}
+function glitchBlock() { const k = {}; glitchReseatBlock(k); k.timer = Math.random() * 0.5; return k }
+function glitchReseatBlock(k) {
+  k.x = rand(0, 1); k.y = rand(0, 1); k.w = rand(0.02, 0.13); k.h = rand(0.015, 0.08)
+  k.col = gpick(); k.alpha = rand(0.5, 0.85)
+  k.flick = Math.random() < 0.6; k.vis = true; k.timer = rand(0.1, 0.6)
+}
+const MOSAIC_PALETTE = ['#39ff14', '#1f4cff', '#ff00d4', '#8a2be2', '#00e5ff', '#ffffff', '#c2cad4', '#101018']
+const mpick = () => MOSAIC_PALETTE[(Math.random() * MOSAIC_PALETTE.length) | 0]
+const CODE_PALETTE = ['#39ff14', '#00e5ff', '#caffd9', '#7CFC00']
+const CODE_CHARS = '0123456789ABCDEF<>/\\=*+#%&$@xY'.split('')
+function glitchCodeStr() {
+  const len = 2 + ((Math.random() * 5) | 0)
+  let s = ''
+  for (let i = 0; i < len; i++) s += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]
+  return s
+}
+function glitchCodeCell() { const c = {}; glitchCodeReseat(c); c.timer = Math.random() * 0.7; return c }
+function glitchCodeReseat(c) {
+  c.x = rand(0, 0.97); c.y = rand(0.02, 0.98); c.s = rand(0.012, 0.024)
+  c.str = glitchCodeStr(); c.col = CODE_PALETTE[(Math.random() * CODE_PALETTE.length) | 0]
+  c.alpha = rand(0.55, 0.95); c.flick = Math.random() < 0.5; c.vis = true; c.timer = rand(0.12, 0.8)
+}
+function glitchTile() { const t = {}; glitchReseatTile(t); t.timer = Math.random() * 0.6; return t }
+function glitchReseatTile(t) {
+  t.size = [0.06, 0.1, 0.16][(Math.random() * 3) | 0] // 网格步长 → 块大小（偏大块）
+  t.x = rand(0, 1); t.y = rand(0, 1)
+  t.col = mpick(); t.alpha = rand(0.45, 0.9)
+  t.flick = Math.random() < 0.5; t.vis = true; t.timer = rand(0.15, 0.7)
 }
 
 function explode(st, r) {
@@ -441,25 +630,62 @@ const FULL = { x: 0, y: 0, w: 1, h: 1 }
 
 export class Effects {
   constructor() {
-    this.active = new Map()   // type -> { state, region }
+    this.active = new Map()   // key -> { state, region } 预设；或 { combo, motion, draw, label, ... }
     this.amount = 50
     this.speed = 1
     this.color = '#eafff2'
+    this.comboSeq = 0
+    this.glitchSampled = false   // 像素马赛克：true=从图片取色
+    this.sampleData = null; this.sampleW = 0; this.sampleH = 0
   }
+  // 存一张底图缩略（供 glitch 取色）。底图变化（拼贴/换图/RGB分离）后调用刷新。
+  setSampler(canvas) {
+    if (!canvas || !canvas.width) return
+    const sw = 80, sh = Math.max(1, Math.round(80 * canvas.height / canvas.width))
+    const t = document.createElement('canvas'); t.width = sw; t.height = sh
+    const c = t.getContext('2d', { willReadFrequently: true })
+    c.drawImage(canvas, 0, 0, sw, sh)
+    this.sampleData = c.getImageData(0, 0, sw, sh).data; this.sampleW = sw; this.sampleH = sh
+  }
+  sampleColor(xN, yN) {
+    const d = this.sampleData
+    if (!d) return '#ffffff'
+    const x = Math.max(0, Math.min(this.sampleW - 1, (xN * this.sampleW) | 0))
+    const y = Math.max(0, Math.min(this.sampleH - 1, (yN * this.sampleH) | 0))
+    const i = (y * this.sampleW + x) * 4
+    return `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`
+  }
+  _count() { return Math.round(8 + (this.amount / 100) * 90) }
   has(type) { return this.active.has(type) }
   list() { return [...this.active.keys()] }
+  isCombo(key) { return !!this.active.get(key)?.combo }
+  label(key) { return this.active.get(key)?.label || null }
   toggle(type) { this.has(type) ? this.remove(type) : this.add(type) }
   add(type) {
     if (!TYPES[type]) return
-    const n = Math.round(8 + (this.amount / 100) * 90)
     const prev = this.active.get(type)
-    this.active.set(type, { state: TYPES[type].make(n), region: prev?.region || { ...FULL } })
+    this.active.set(type, { state: TYPES[type].make(this._count()), region: prev?.region || { ...FULL } })
+  }
+  // 自由组合层：形状 spec ({key} 或 {glyph}) × 运动 motion
+  addCombo(shapeSpec, motion) {
+    if (!MOTIONS[motion]) return null
+    const key = 'combo:' + (++this.comboSeq)
+    this.active.set(key, {
+      combo: true, motion, shapeSpec, draw: shapeDrawer(shapeSpec),
+      label: `${shapeSpecLabel(shapeSpec)} · ${MOTIONS[motion].label}`,
+      state: MOTIONS[motion].make(this._count()), region: { ...FULL },
+    })
+    return key
   }
   remove(type) { this.active.delete(type) }
   clear() { this.active.clear() }
   setAmount(v) {
     this.amount = v
-    for (const type of this.list()) this.add(type) // 重新生成粒子，保留 region
+    const n = this._count()
+    for (const [key, ent] of this.active) {
+      if (ent.combo) ent.state = MOTIONS[ent.motion].make(n) // 保留 shape/region，只重生粒子
+      else this.add(key)
+    }
   }
   setRegion(type, region) {
     const ent = this.active.get(type)
@@ -474,7 +700,10 @@ export class Effects {
 
   update(dt) {
     const sp = this.speed
-    for (const [type, ent] of this.active) TYPES[type].update(ent.state, dt, sp)
+    for (const [type, ent] of this.active) {
+      if (ent.combo) MOTIONS[ent.motion].update(ent.state, dt, sp)
+      else TYPES[type].update(ent.state, dt, sp)
+    }
   }
   // 每个动效裁剪到自己的 region；归一化粒子映射进该子矩形。
   draw(ctx, W, H) {
@@ -486,8 +715,19 @@ export class Effects {
       ctx.rect(rx, ry, rw, rh)
       ctx.clip()
       ctx.translate(rx, ry)
-      TYPES[type].draw(ctx, rw, rh, ent.state, this.color)
+      if (ent.combo) this._drawCombo(ctx, rw, rh, ent)
+      else TYPES[type].draw(ctx, rw, rh, ent.state, this.color, this, reg)
       ctx.restore()
     }
+  }
+  _drawCombo(ctx, rw, rh, ent) {
+    const aspect = rw / rh
+    const m = MOTIONS[ent.motion]
+    for (const p of ent.state) {
+      const pl = m.place(p, aspect)
+      if (pl.alpha <= 0.02) continue
+      ent.draw(ctx, pl.x * rw, pl.y * rh, Math.max(1, pl.size * rw), pl.rot, this.color, pl.alpha)
+    }
+    ctx.globalAlpha = 1
   }
 }
