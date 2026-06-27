@@ -34,7 +34,14 @@ const state = {
   recDur: 5,
   collage: { enabled: false, layout: 'lr', side: 'a', bands: 3, palette: [] },
   glitchImg: { rgb: 0 },   // RGB 分离强度 0..100，作用于照片本身（tmnl 风），烘进 baseCanvas
+  diffuse: { enabled: false, intensity: 55, haze: 35, blobs: 5, palette: 'auto', spots: [], grain: 0, grainSize: 1 },
 }
+
+// 梦幻彩光斑配色（弥散光常用的柔和糖果色）
+const DREAM_COLORS = [
+  { r: 255, g: 173, b: 209 }, { r: 196, g: 181, b: 253 }, { r: 165, g: 216, b: 255 },
+  { r: 167, g: 243, b: 208 }, { r: 255, g: 214, b: 165 }, { r: 253, g: 186, b: 222 },
+]
 
 // 原图离屏画布：永远保存「未拼贴」的原始像素，供识别 / 取色 / 拼贴重组用。
 // baseCanvas 则保存「合成后」用于显示 / ASCII / 导出的画面。
@@ -125,10 +132,87 @@ function composeBase() {
   finishBase(ctx, W, H)
 }
 
-// 底图收尾：烘 RGB 分离（tmnl 风），再刷新 glitch 取色缩略图
+// 底图收尾：弥散光晕 → RGB 分离（tmnl 风）→ 刷新 glitch 取色缩略图
 function finishBase(ctx, W, H) {
+  if (state.diffuse.enabled) applyDiffuse(ctx, W, H)
   if (state.glitchImg.rgb > 0) applyRgbSplit(ctx, W, H, Math.max(1, Math.round((state.glitchImg.rgb / 100) * 0.025 * W)))
+  if (state.diffuse.grain > 0) applyGrain(ctx, W, H, state.diffuse.grain, state.diffuse.grainSize)
   effects.setSampler(baseCanvas)
+}
+
+// 胶片颗粒 / 噪点：给每个(块)像素加随机明暗扰动。gs=1 细噪点，gs≥2 粗颗粒。
+function applyGrain(ctx, W, H, amt, gs) {
+  const mag = (amt / 100) * 60
+  const step = Math.max(1, gs | 0)
+  const img = ctx.getImageData(0, 0, W, H)
+  const d = img.data
+  const clmp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const n = (Math.random() - 0.5) * 2 * mag
+      const ymax = Math.min(H, y + step), xmax = Math.min(W, x + step)
+      for (let yy = y; yy < ymax; yy++) {
+        for (let xx = x; xx < xmax; xx++) {
+          const i = (yy * W + xx) * 4
+          d[i] = clmp(d[i] + n); d[i + 1] = clmp(d[i + 1] + n); d[i + 2] = clmp(d[i + 2] + n)
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+}
+
+// 生成弥散光斑（位置铺开、颜色取自画面主色调或梦幻彩）
+function genDiffuseSpots() {
+  const dif = state.diffuse
+  let cols
+  if (dif.palette === 'dream') cols = DREAM_COLORS.slice()
+  else {
+    if (!state.collage.palette.length) state.collage.palette = extractPalette(origCanvas, 6)
+    cols = state.collage.palette.map((c) => ({ r: c.r, g: c.g, b: c.b }))
+    if (!cols.length) cols = DREAM_COLORS.slice()
+  }
+  const spots = []
+  for (let i = 0; i < dif.blobs; i++) {
+    spots.push({ x: _rand(0.05, 0.95), y: _rand(0.05, 0.95), r: _rand(0.32, 0.7), col: _pick(cols) })
+  }
+  dif.spots = spots
+}
+
+// 弥散渐变 + 朦胧柔焦，烘进 baseCanvas
+function applyDiffuse(ctx, W, H) {
+  const dif = state.diffuse
+  if (!dif.spots.length) genDiffuseSpots()
+  const haze = dif.haze / 100, inten = dif.intensity / 100
+  const big = Math.max(W, H)
+  // 朦胧柔焦：模糊自身叠加 + 轻微提亮去灰
+  if (haze > 0) {
+    ctx.save()
+    ctx.globalAlpha = 0.55 * haze
+    ctx.filter = `blur(${Math.max(1, Math.round(haze * big * 0.012))}px)`
+    ctx.drawImage(baseCanvas, 0, 0, W, H)
+    ctx.restore()
+    ctx.filter = 'none'
+    ctx.save()
+    ctx.globalAlpha = 0.12 * haze
+    ctx.globalCompositeOperation = 'lighten'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+  }
+  // 弥散光斑：大半径径向渐变，screen 叠加成柔光晕
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  for (const s of dif.spots) {
+    const cx = s.x * W, cy = s.y * H, R = s.r * big
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
+    const c = s.col
+    g.addColorStop(0, `rgba(${c.r | 0},${c.g | 0},${c.b | 0},${(0.55 * inten).toFixed(3)})`)
+    g.addColorStop(1, `rgba(${c.r | 0},${c.g | 0},${c.b | 0},0)`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, W, H)
+  }
+  ctx.restore()
 }
 
 // 把照片自身的 R / B 通道左右错位 → 色散撕裂（一次性像素处理）
@@ -472,14 +556,14 @@ document.querySelectorAll('.tab').forEach((t) => {
     if (t.dataset.tab !== 'ascii') regionBox.hidden = true
     else if (state.asciiOpts.scope === 'region' && state.asciiRegionNorm) showBoxFromNorm(state.asciiRegionNorm)
     syncLabelsPE()
-    stage.style.cursor = t.dataset.tab === 'doodle' ? 'crosshair' : 'default'
+    stage.style.cursor = t.dataset.tab === 'motion' ? 'crosshair' : 'default'
   })
 })
 
 // 装饰 tab 时关闭关键词标签的指针事件，让画布接收装饰拖拽；其它 tab 恢复
 function syncLabelsPE() {
   if (regionDraw.active) { labelsLayer.style.pointerEvents = 'none'; return }
-  labelsLayer.style.pointerEvents = $('.tab.active')?.dataset.tab === 'doodle' ? 'none' : 'auto'
+  labelsLayer.style.pointerEvents = $('.tab.active')?.dataset.tab === 'motion' ? 'none' : 'auto'
 }
 
 // segmented helper
@@ -639,7 +723,7 @@ function refreshFxRegionUI() {
   const wrap = $('#fx-region-edit')
   wrap.hidden = list.length === 0
   const sel = $('#fx-region-target')
-  const labels = { rain: '🌧 雨滴', notes: '♪ 音符', waves: '≈ 浪花', sparkle: '✦ 星星', fireworks: '🎆 烟花', twinkle: '★ 闪烁星', snow: '❄ 雪花', hearts: '♥ 心', glitchBars: '▬ 霓虹色条', glitchBlocks: '▪ 错位方块', glitchMosaic: '▦ 像素马赛克', glitchScan: '▤ 扫描线', glitchCode: '⌗ 代码乱码' }
+  const labels = { rain: '🌧 雨滴', notes: '♪ 音符', waves: '≈ 浪花', sparkle: '✦ 星星', fireworks: '🎆 烟花', twinkle: '★ 闪烁星', snow: '❄ 雪花', hearts: '♥ 心', glitchBars: '▬ 霓虹色条', glitchBlocks: '▪ 错位方块', glitchMosaic: '▦ 像素马赛克', glitchScan: '▤ 扫描线', glitchCode: '⌗ 代码乱码', glitchDropout: '▭ 信号死区', glitchPulse: '◉ 脉冲', glitchStorm: '▒ 噪暴', glitchBurst: '✺ 爆发' }
   const prev = sel.value
   sel.innerHTML = ''
   for (const t of list) {
@@ -826,9 +910,53 @@ $('#glitch-speed').addEventListener('input', (e) => {
   $('#fx-speed').value = e.target.value; $('#fx-speed-val').textContent = e.target.value
 })
 $('#btn-glitch-clear').addEventListener('click', () => {
-  for (const t of ['glitchBars', 'glitchBlocks', 'glitchMosaic', 'glitchScan', 'glitchCode']) effects.remove(t)
+  for (const t of ['glitchBars', 'glitchBlocks', 'glitchMosaic', 'glitchScan', 'glitchCode', 'glitchDropout', 'glitchPulse', 'glitchStorm', 'glitchBurst']) effects.remove(t)
   document.querySelectorAll('#glitch-grid .fx-card').forEach((c) => c.classList.remove('active'))
   refreshFxRegionUI()
+})
+
+// ====== 弥散渐变 tab ======
+// 烘进 baseCanvas（同拼贴/RGB分离），改参数即重组底图并清掉过期 ASCII。
+function applyDiffuse_recompose(msg) {
+  if (!state.img) { _setSeg('#dif-enable', 'dif', 'off'); state.diffuse.enabled = false; return toast('先上传一张照片') }
+  composeBase()
+  if (state.hasAscii) { clearAscii(asciiCanvas); state.hasAscii = false }
+  if (msg) toast(msg)
+}
+let _difRaf = 0
+function diffuseThrottle() {
+  if (!state.img || !state.diffuse.enabled || _difRaf) return
+  _difRaf = requestAnimationFrame(() => { _difRaf = 0; composeBase(); if (state.hasAscii) { clearAscii(asciiCanvas); state.hasAscii = false } })
+}
+seg('#dif-enable', 'dif', (v) => {
+  state.diffuse.enabled = v === 'on'
+  if (state.diffuse.enabled && !state.diffuse.spots.length && state.img) genDiffuseSpots()
+  applyDiffuse_recompose(state.diffuse.enabled ? '弥散开启 ✦ ASCII 已清，可重新生成' : '弥散关闭')
+})
+seg('#dif-palette', 'dpal', (v) => { state.diffuse.palette = v; if (state.img) genDiffuseSpots(); if (state.diffuse.enabled) applyDiffuse_recompose() })
+$('#dif-intensity').addEventListener('input', (e) => { state.diffuse.intensity = +e.target.value; $('#dif-intensity-val').textContent = e.target.value; diffuseThrottle() })
+$('#dif-haze').addEventListener('input', (e) => { state.diffuse.haze = +e.target.value; $('#dif-haze-val').textContent = e.target.value; diffuseThrottle() })
+$('#dif-blobs').addEventListener('input', (e) => {
+  state.diffuse.blobs = +e.target.value; $('#dif-blobs-val').textContent = e.target.value
+  if (state.img) genDiffuseSpots()
+  diffuseThrottle()
+})
+$('#btn-dif-shuffle').addEventListener('click', () => {
+  if (!state.img) return toast('先上传一张照片')
+  genDiffuseSpots()
+  if (state.diffuse.enabled) applyDiffuse_recompose('换了一组光斑 ✦')
+  else toast('已生成光斑 ✦ 开启弥散看效果')
+})
+// 颗粒/噪点：独立于弥散开关，强度>0 即生效（烘进底图）
+let _grainRaf = 0
+function grainThrottle() {
+  if (!state.img || _grainRaf) return
+  _grainRaf = requestAnimationFrame(() => { _grainRaf = 0; composeBase(); if (state.hasAscii) { clearAscii(asciiCanvas); state.hasAscii = false } })
+}
+$('#dif-grain').addEventListener('input', (e) => { state.diffuse.grain = +e.target.value; $('#dif-grain-val').textContent = e.target.value; grainThrottle() })
+seg('#dif-grain-size', 'gsize', (v) => {
+  state.diffuse.grainSize = +v
+  if (state.img && state.diffuse.grain > 0) { composeBase(); if (state.hasAscii) { clearAscii(asciiCanvas); state.hasAscii = false } }
 })
 // 像素马赛克：霓虹纯色 / 从图片取色
 seg('#glitch-mosaic-color', 'mcol', (v) => { effects.glitchSampled = v === 'sampled' })
@@ -924,7 +1052,7 @@ function ptNorm(e) {
     yN: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
   }
 }
-function inDoodleTab() { return $('.tab.active')?.dataset.tab === 'doodle' }
+function inDoodleTab() { return $('.tab.active')?.dataset.tab === 'motion' }
 let ddDrag = null
 stage.addEventListener('pointerdown', (e) => {
   if (regionDraw.active || !inDoodleTab() || !state.img) return

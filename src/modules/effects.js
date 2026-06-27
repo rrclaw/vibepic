@@ -559,6 +559,119 @@ const TYPES = {
       ctx.globalAlpha = 1
     },
   },
+
+  // 故障·信号死区：整行黑/白/霓虹断带急促闪断（VHS dropout）
+  glitchDropout: {
+    make(n) {
+      const c = Math.max(4, Math.round(n * 0.22))
+      const bands = []
+      for (let i = 0; i < c; i++) bands.push(dropoutBand())
+      return { bands }
+    },
+    update(st, dt, sp) {
+      for (const b of st.bands) {
+        b.timer -= dt * sp
+        if (b.timer <= 0) dropoutReseat(b)
+        b.on = Math.random() > 0.42 // 高频闪断
+      }
+    },
+    draw(ctx, w, h, st) {
+      for (const b of st.bands) {
+        if (!b.on) continue
+        ctx.globalAlpha = b.alpha
+        ctx.fillStyle = b.col
+        ctx.fillRect(0, b.y * h, w, Math.max(1, b.h * h))
+      }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·脉冲：按节拍整屏霓虹闪一下 + 同步亮带扫过（心跳/律动感）
+  glitchPulse: {
+    make() { return { t: 0, flash: 0, col: gpick(), barY: Math.random(), next: rand(0.4, 0.9) } },
+    update(st, dt, sp) {
+      st.t += dt * sp
+      st.flash = Math.max(0, st.flash - dt * sp * 2.6)
+      st.barY = (st.barY + 0.6 * dt * sp) % 1
+      if (st.t >= st.next) { st.flash = 1; st.col = gpick(); st.t = 0; st.next = rand(0.4, 1.0) }
+    },
+    draw(ctx, w, h, st) {
+      if (st.flash > 0.02) {
+        ctx.globalAlpha = 0.2 * st.flash
+        ctx.fillStyle = st.col
+        ctx.fillRect(0, 0, w, h)
+      }
+      ctx.globalAlpha = 0.5 + 0.4 * st.flash
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, st.barY * h, w, Math.max(2, h * 0.01))
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·噪暴：满屏雪花静电 + 几条横向窜动的彩色噪线（强干扰）
+  glitchStorm: {
+    make(n) {
+      const c = Math.min(160, Math.max(50, Math.round(n * 2.4)))
+      const dots = []
+      for (let i = 0; i < c; i++) dots.push({ x: Math.random(), y: Math.random(), s: rand(0.003, 0.01), col: stormCol() })
+      const streaks = []
+      for (let i = 0; i < 4; i++) streaks.push({ y: Math.random(), v: rand(0.3, 0.9), col: gpick(), h: rand(0.004, 0.012) })
+      return { dots, streaks }
+    },
+    update(st, dt, sp) {
+      for (const d of st.dots) { d.x = Math.random(); d.y = Math.random(); if (Math.random() < 0.3) d.col = stormCol() }
+      for (const s of st.streaks) { s.y += s.v * dt * sp; if (s.y > 1.05) { s.y = -0.05; s.col = gpick() } }
+    },
+    draw(ctx, w, h, st) {
+      ctx.globalAlpha = 0.7
+      for (const d of st.dots) { ctx.fillStyle = d.col; ctx.fillRect(d.x * w, d.y * h, d.s * w, d.s * w) }
+      ctx.globalAlpha = 0.6
+      for (const s of st.streaks) { ctx.fillStyle = s.col; ctx.fillRect(0, s.y * h, w, s.h * h) }
+      ctx.globalAlpha = 1
+    },
+  },
+
+  // 故障·爆发：平静一段后突然集中爆发一阵（色条+方块齐发），周而复始
+  glitchBurst: {
+    make(n) { return { t: 0, active: false, until: rand(0.6, 1.8), n, bars: [], blocks: [] } },
+    update(st, dt, sp) {
+      st.t += dt * sp
+      if (!st.active) {
+        if (st.t >= st.until) {
+          st.active = true; st.t = 0; st.until = rand(0.2, 0.5)
+          const k = Math.max(8, Math.round(st.n * 0.4))
+          st.bars = Array.from({ length: k }, glitchBar)
+          st.blocks = Array.from({ length: k }, glitchBlock)
+        }
+      } else if (st.t >= st.until) {
+        st.active = false; st.t = 0; st.until = rand(0.7, 1.8); st.bars = []; st.blocks = []
+      } else {
+        for (const b of st.bars) if (b.flick) b.vis = Math.random() > 0.3
+        for (const k of st.blocks) if (k.flick) k.vis = Math.random() > 0.35
+      }
+    },
+    draw(ctx, w, h, st) {
+      if (!st.active) return
+      for (const k of st.blocks) {
+        if (!k.vis) continue
+        ctx.globalAlpha = k.alpha; ctx.fillStyle = k.col
+        ctx.fillRect(k.x * w, k.y * h, k.w * w, k.h * h)
+      }
+      for (const b of st.bars) {
+        if (!b.vis) continue
+        const bx = b.x * w, by = b.y * h, bw = b.w * w, bh = Math.max(1, b.h * h)
+        if (b.rgb) {
+          const off = Math.max(1, bh * 0.5)
+          ctx.globalAlpha = 0.5
+          ctx.fillStyle = '#ff003c'; ctx.fillRect(bx - off, by, bw, bh)
+          ctx.fillStyle = '#00fff0'; ctx.fillRect(bx + off, by, bw, bh)
+        }
+        ctx.globalAlpha = b.alpha; ctx.fillStyle = b.col
+        ctx.fillRect(bx, by, bw, bh)
+      }
+      ctx.globalAlpha = 1
+    },
+  },
 }
 
 const GLITCH_PALETTE = ['#39ff14', '#1f4cff', '#ff00d4', '#8a2be2', '#ffffff', '#00e5ff']
@@ -575,6 +688,15 @@ function glitchReseatBlock(k) {
   k.col = gpick(); k.alpha = rand(0.5, 0.85)
   k.flick = Math.random() < 0.6; k.vis = true; k.timer = rand(0.1, 0.6)
 }
+const DROPOUT_PALETTE = ['#000000', '#000000', '#06060c', '#ffffff', '#39ff14', '#00e5ff']
+function dropoutBand() { const b = {}; dropoutReseat(b); return b }
+function dropoutReseat(b) {
+  b.y = rand(0, 1); b.h = rand(0.008, 0.07)
+  b.col = DROPOUT_PALETTE[(Math.random() * DROPOUT_PALETTE.length) | 0]
+  b.alpha = rand(0.7, 1); b.on = true; b.timer = rand(0.05, 0.4)
+}
+const STORM_COLS = ['#ffffff', '#c2cad4', '#39ff14', '#00e5ff', '#ff00d4', '#000000']
+const stormCol = () => STORM_COLS[(Math.random() * STORM_COLS.length) | 0]
 const MOSAIC_PALETTE = ['#39ff14', '#1f4cff', '#ff00d4', '#8a2be2', '#00e5ff', '#ffffff', '#c2cad4', '#101018']
 const mpick = () => MOSAIC_PALETTE[(Math.random() * MOSAIC_PALETTE.length) | 0]
 const CODE_PALETTE = ['#39ff14', '#00e5ff', '#caffd9', '#7CFC00']

@@ -48,9 +48,9 @@
       <nav class="tabs">
         <button class="tab active" data-tab="keywords">关键词</button>
         <button class="tab" data-tab="ascii">ASCII</button>
-        <button class="tab" data-tab="effects">动效</button>
-        <button class="tab" data-tab="doodle">装饰</button>
+        <button class="tab" data-tab="motion">动态</button>
         <button class="tab" data-tab="glitch">故障</button>
+        <button class="tab" data-tab="diffuse">弥散</button>
         <button class="tab" data-tab="collage">拼贴</button>
         <button class="tab" data-tab="export">导出</button>
       </nav>
@@ -172,8 +172,8 @@
         </div>
       </div>
 
-      <!-- EFFECTS -->
-      <div class="tab-pane" data-pane="effects">
+      <!-- MOTION 动态（动效 + 装饰） -->
+      <div class="tab-pane" data-pane="motion">
         <p class="hint">叠加动效图层，可多选。每个动效能单独框定范围（像图里只有灯下 / 伞下有动效），不框=全屏。导出 WebM 会录下动画。</p>
         <div class="fx-grid" id="fx-grid">
           <button class="fx-card" data-fx="rain"><span>🌧</span>ascii 雨滴</button>
@@ -227,10 +227,8 @@
           </div>
         </div>
         <button id="btn-fx-clear" class="btn btn-ghost full">关闭所有动效</button>
-      </div>
 
-      <!-- DOODLE 装饰 -->
-      <div class="tab-pane" data-pane="doodle">
+        <div class="section-divider">手绘装饰</div>
         <p class="hint">手绘描边装饰，会自己描出来 + 持续微动，导出 WebM 也录得到。先选颜色，再点元素。</p>
         <div class="field row2">
           <div>
@@ -307,6 +305,10 @@
           <button class="fx-card" data-glitch="glitchMosaic"><span>▦</span>像素马赛克</button>
           <button class="fx-card" data-glitch="glitchScan"><span>▤</span>扫描线</button>
           <button class="fx-card" data-glitch="glitchCode"><span>⌗</span>代码乱码</button>
+          <button class="fx-card" data-glitch="glitchDropout"><span>▭</span>信号死区</button>
+          <button class="fx-card" data-glitch="glitchPulse"><span>◉</span>脉冲闪烁</button>
+          <button class="fx-card" data-glitch="glitchStorm"><span>▒</span>雪花噪暴</button>
+          <button class="fx-card" data-glitch="glitchBurst"><span>✺</span>定时爆发</button>
         </div>
         <div class="field">
           <label>像素马赛克配色</label>
@@ -328,6 +330,52 @@
           <input id="glitch-speed" type="range" min="20" max="200" value="100" />
         </div>
         <button id="btn-glitch-clear" class="btn btn-ghost full">关闭所有故障</button>
+      </div>
+
+      <!-- DIFFUSE 弥散渐变 -->
+      <div class="tab-pane" data-pane="diffuse">
+        <p class="hint">弥散渐变 / 朦胧光晕：在画面上叠柔和的大色斑光晕 + 雾化柔焦，做出「弥散光」那种梦幻氛围。颜色默认取自画面主色调。</p>
+        <div class="field">
+          <label>弥散效果</label>
+          <div class="seg" id="dif-enable">
+            <button class="seg-btn active" data-dif="off">关闭</button>
+            <button class="seg-btn" data-dif="on">开启</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>光晕浓度 <span id="dif-intensity-val">55</span></label>
+          <input id="dif-intensity" type="range" min="0" max="100" value="55" />
+        </div>
+        <div class="field">
+          <label>朦胧柔焦 <span id="dif-haze-val">35</span></label>
+          <input id="dif-haze" type="range" min="0" max="100" value="35" />
+        </div>
+        <div class="field">
+          <label>光斑数量 <span id="dif-blobs-val">5</span></label>
+          <input id="dif-blobs" type="range" min="2" max="8" value="5" />
+        </div>
+        <div class="field">
+          <label>配色</label>
+          <div class="seg" id="dif-palette">
+            <button class="seg-btn active" data-dpal="auto">画面取色</button>
+            <button class="seg-btn" data-dpal="dream">梦幻彩</button>
+          </div>
+        </div>
+        <button id="btn-dif-shuffle" class="btn btn-ghost full">↻ 换一组光斑</button>
+
+        <div class="section-divider">噪点 · 颗粒</div>
+        <p class="hint">叠一层胶片颗粒 / 噪点质感，复古朦胧更耐看。强度 0 = 关闭。</p>
+        <div class="field">
+          <label>颗粒强度 <span id="dif-grain-val">0</span></label>
+          <input id="dif-grain" type="range" min="0" max="100" value="0" />
+        </div>
+        <div class="field">
+          <label>颗粒质感</label>
+          <div class="seg" id="dif-grain-size">
+            <button class="seg-btn active" data-gsize="1">细噪点</button>
+            <button class="seg-btn" data-gsize="2">粗颗粒</button>
+          </div>
+        </div>
       </div>
 
       <!-- COLLAGE 拼贴 -->

@@ -191,6 +191,16 @@ input[type=color] { width: 44px; height: 36px; border: 1px solid var(--line); bo
 .combo-item .ci-btn:hover { color: var(--accent); }
 .combo-item .ci-del:hover { color: #c0392b; }
 
+/* ---------- Section divider (合并栏目分段) ---------- */
+.section-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 20px 0 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft);
+  letter-spacing: 0.5px;
+}
+.section-divider::before, .section-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--line);
+}
+
 /* ---------- Collage swatches ---------- */
 .col-swatches { display: flex; gap: 6px; flex-wrap: wrap; min-height: 30px; }
 .col-swatches .sw {
